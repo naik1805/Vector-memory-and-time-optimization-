@@ -175,7 +175,7 @@ def build():
             "the status line and progress bar show embedding and comparison while results load. "
             "Do not move on until the run finishes (status shows Done).",
             "Review the first ten picks, memory gauges, and test-time gauges "
-            "(without vs with verilumen agent).",
+            "(without vs top 10 pick of verilumen agent).",
             "Add fail-log folders from your own computer.",
             "Click <b>Analyze fail counts</b> for <b>high recommended patterns order</b> "
             "and <b>low risk patterns</b>.",
@@ -222,11 +222,11 @@ def build():
         story.append(tbl)
         story.append(Spacer(1, 1 * mm))
 
-    story.append(Paragraph("3. First ten patterns (without vs with Verilumen agent)", styles["h"]))
+    story.append(Paragraph("3. First ten patterns (without vs top 10 pick of verilumen agent)", styles["h"]))
     story.append(
         Paragraph(
             "The left board (<b>without verilumen agent order</b>) shows patterns in ordinary order. The right board "
-            "(<b>with verilumen agent</b>) shows diverse patterns the agent chose to <b>KEEP</b>. "
+            "(<b>top 10 pick of verilumen agent</b>) shows diverse patterns the agent chose to <b>KEEP</b>. "
             "Click slots or use Prev/Next to replay each decision. Yellow-outlined bits are "
             "different from the already-kept comparison pattern.",
             styles["body"],

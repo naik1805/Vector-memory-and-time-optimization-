@@ -91,7 +91,7 @@ The thin yellow bar under the status text shows progress. When the bar is full, 
 
 ---
 
-## 4. First ten patterns — without vs with Verilumen agent
+## 4. First ten patterns — without vs top 10 pick of verilumen agent
 
 ![First 10 patterns](images/04-first10.png)
 
@@ -101,7 +101,7 @@ This section is the live “decision window.” It shows the first ten pattern c
 
 On the left, **without verilumen agent order** shows patterns in ordinary order (P0, P1, P2, and so on). Each slot is marked **RUN**, meaning a full-suite tester would simply run the next pattern in sequence.
 
-On the right, **with verilumen agent** shows the patterns the agent selected. These are not in simple numerical order. The agent picks patterns that look different from each other so the smaller set still covers diverse stimulus. Each selected slot is marked **KEEP**.
+On the right, **top 10 pick of verilumen agent** shows the patterns the agent selected. These are not in simple numerical order. The agent picks patterns that look different from each other so the smaller set still covers diverse stimulus. Each selected slot is marked **KEEP**.
 
 ### Understanding one pick
 

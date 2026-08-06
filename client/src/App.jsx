@@ -1054,7 +1054,7 @@ export default function App() {
                 onSelect={jumpToStep}
               />
               <TenSlots
-                title="with verilumen agent"
+                title="top 10 pick of verilumen agent"
                 tone="lstm"
                 slots={lstmSlots}
                 cursor={focusStep}
