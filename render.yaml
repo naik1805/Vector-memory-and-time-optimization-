@@ -2,8 +2,10 @@ services:
   - type: web
     name: vector-memory-optimization
     runtime: docker
-    plan: free
+    plan: starter
+    region: singapore
     healthCheckPath: /api/health
+    dockerCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production

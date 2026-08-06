@@ -1,36 +1,36 @@
-# Production image: visitors hit only the running UI + API.
-# Source stays on the server — not exposed via the public link.
+# Cloud image: UI + API + Python worker (no need for your PC to stay on)
 
 FROM python:3.11-slim-bookworm
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    NODE_ENV=production \
+    PORT=8787 \
+    PYTHON=python3
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates \
+    curl ca-certificates build-essential \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Python deps (torch is large — expect multi‑GB image / slow first build)
+# CPU-only PyTorch (smaller than full CUDA build)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r requirements.txt
 
-# Node deps
 COPY package.json package-lock.json ./
 COPY client/package.json client/package-lock.json ./client/
 RUN npm ci && npm ci --prefix client
 
-# App source
 COPY . .
-
-# Build React → client/dist (compiled assets only)
-RUN npm run build
-
-ENV PORT=8787
-ENV PYTHON=python3
-ENV NODE_ENV=production
+RUN npm run build \
+    && npm prune --omit=dev \
+    && npm prune --omit=dev --prefix client
 
 EXPOSE 8787
-
-# Single process: Express API + static UI; Python workers spawned on demand
 CMD ["npm", "start"]

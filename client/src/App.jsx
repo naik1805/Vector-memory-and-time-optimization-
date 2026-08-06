@@ -14,6 +14,183 @@ import {
 const API = "";
 const FIRST_N = 10;
 
+/** Advantest logs use P1..P1000; Verilumen / STIL ids are 0..999. */
+function logLabelToPatternId(label) {
+  return label <= 0 ? label : label - 1;
+}
+
+function folderKeyFromRel(rel) {
+  const parts = String(rel || "").replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.length >= 2 ? parts[0] : "(root)";
+}
+
+/** Parse one Advantest-style die log → { [patternId]: { fails, passes } }. */
+function parseAteLogText(text) {
+  const atePat = /^P(\d+)\s*\|/i;
+  const ateStatus = /STATUS\s*:\s*([FP])\b/i;
+  let cur = null;
+  const hasFail = new Map();
+  const hasStatus = new Map();
+  let hits = 0;
+
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    const m = line.match(atePat);
+    if (m) {
+      cur = Number(m[1]);
+      continue;
+    }
+    const sm = line.match(ateStatus);
+    if (!sm || cur == null) continue;
+    hits += 1;
+    hasStatus.set(cur, true);
+    if (String(sm[1]).toUpperCase() === "F") hasFail.set(cur, true);
+  }
+
+  if (!hits) return null;
+
+  const counts = {};
+  for (const label of hasStatus.keys()) {
+    const pid = logLabelToPatternId(label);
+    if (!counts[pid]) counts[pid] = { fails: 0, passes: 0 };
+    if (hasFail.get(label)) counts[pid].fails += 1;
+    else counts[pid].passes += 1;
+  }
+  return counts;
+}
+
+/**
+ * Analyze log files entirely in the browser (no upload).
+ * Client keeps their files local — works over the share link.
+ */
+async function analyzeLogsInBrowser(logItems, selectedIds, discardedIds, onProgress) {
+  const selected = (selectedIds || []).map(Number);
+  const discarded = (discardedIds || []).map(Number);
+  const known = new Set([...selected, ...discarded]);
+
+  const perPattern = new Map();
+  const ensure = (pid) => {
+    if (!perPattern.has(pid)) {
+      perPattern.set(pid, {
+        fails: 0,
+        passes: 0,
+        by_folder: {},
+        files: [],
+      });
+    }
+    return perPattern.get(pid);
+  };
+
+  const foldersSeen = new Set();
+  let filesParsed = 0;
+  let filesWithStatus = 0;
+  let filesSkipped = 0;
+
+  const usable = (logItems || []).filter((item) => {
+    const name = (item.rel || item.file?.name || "").toLowerCase();
+    return (
+      name.endsWith(".log") ||
+      name.endsWith(".txt") ||
+      name.endsWith(".csv") ||
+      name.endsWith(".out") ||
+      name.endsWith(".rpt")
+    );
+  });
+
+  for (let i = 0; i < usable.length; i++) {
+    const item = usable[i];
+    const rel = (item.rel || item.file.name || "").replace(/\\/g, "/");
+    foldersSeen.add(folderKeyFromRel(rel));
+    onProgress?.(i + 1, usable.length, rel);
+
+    let text = "";
+    try {
+      text = await item.file.text();
+    } catch {
+      filesSkipped += 1;
+      continue;
+    }
+
+    filesParsed += 1;
+    const fileCounts = parseAteLogText(text);
+    if (!fileCounts) continue;
+    filesWithStatus += 1;
+    const folder = folderKeyFromRel(rel);
+
+    for (const [pidStr, cp] of Object.entries(fileCounts)) {
+      const pid = Number(pidStr);
+      const row = ensure(pid);
+      row.fails += cp.fails;
+      row.passes += cp.passes;
+      if (!row.by_folder[folder]) row.by_folder[folder] = { fails: 0, passes: 0 };
+      row.by_folder[folder].fails += cp.fails;
+      row.by_folder[folder].passes += cp.passes;
+      if (cp.fails || cp.passes) {
+        row.files.push({ path: rel, fails: cp.fails, passes: cp.passes });
+      }
+    }
+
+    // Yield so UI stays responsive on large folders
+    if (i % 2 === 1) await new Promise((r) => setTimeout(r, 0));
+  }
+
+  const serialize = (ids) =>
+    ids
+      .map((pid) => {
+        const row = perPattern.get(pid);
+        const fails = row ? row.fails : 0;
+        const passes = row ? row.passes : 0;
+        return {
+          pattern_id: pid,
+          fails,
+          passes,
+          total: fails + passes,
+          fail_rate: fails / Math.max(fails + passes, 1),
+          by_folder: row ? row.by_folder : {},
+          files: row ? row.files.slice(0, 20) : [],
+        };
+      })
+      .sort((a, b) => b.fails - a.fails || a.pattern_id - b.pattern_id);
+
+  const kept = serialize(selected);
+  const discardedRows = serialize(discarded);
+  const unmatched = [];
+  for (const [pid, row] of perPattern.entries()) {
+    if (known.has(pid)) continue;
+    if (!row.fails && !row.passes) continue;
+    unmatched.push({ pattern_id: pid, fails: row.fails, passes: row.passes });
+  }
+  unmatched.sort((a, b) => b.fails - a.fails);
+
+  const keptFails = kept.reduce((s, r) => s + r.fails, 0);
+  const discFails = discardedRows.reduce((s, r) => s + r.fails, 0);
+
+  return {
+    folders: [...foldersSeen].sort(),
+    n_folders: foldersSeen.size,
+    files_parsed: filesParsed,
+    files_with_status: filesWithStatus,
+    files_skipped: filesSkipped,
+    id_mapping: "log_Pn -> pattern_id n-1 (browser-local analysis)",
+    summary: {
+      kept_n: selected.length,
+      discarded_n: discarded.length,
+      kept_with_fails: kept.filter((r) => r.fails > 0).length,
+      discarded_with_fails: discardedRows.filter((r) => r.fails > 0).length,
+      kept_total_fails: keptFails,
+      discarded_total_fails: discFails,
+      all_total_fails: keptFails + discFails,
+      unmatched_patterns: unmatched.length,
+      unmatched_fails: unmatched.reduce((s, u) => s + u.fails, 0),
+    },
+    kept,
+    discarded: discardedRows,
+    kept_failing: kept.filter((r) => r.fails > 0),
+    discarded_failing: discardedRows.filter((r) => r.fails > 0),
+    unmatched: unmatched.slice(0, 100),
+  };
+}
+
 function PatternListPanel({
   title,
   tone,
@@ -523,34 +700,34 @@ export default function App() {
     }
 
     setAnalyzingFails(true);
-    setStatus(
-      `Analyzing fails in ${logFolders.length} folder(s) / ${logFiles.length} file(s) for kept + discarded patterns…`
-    );
     setStatusTone("");
-
-    const body = new FormData();
-    const rels = [];
-    for (const item of logFiles) {
-      body.append("logs", item.file, item.file.name);
-      rels.push(item.rel);
-    }
-    body.append("relative_paths", JSON.stringify(rels));
-    body.append("selected_ids", JSON.stringify(done.selected_ids || []));
-    body.append("discarded_ids", JSON.stringify(done.discarded_ids || []));
+    setStatus(
+      `Reading local logs on this PC (${logFolders.length} folder(s) / ${logFiles.length} file(s))…`
+    );
 
     try {
-      const res = await fetch(`${API}/api/analyze-fails`, {
-        method: "POST",
-        body,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // Analyze on the client's machine — no large upload through the share link
+      const data = await analyzeLogsInBrowser(
+        logFiles,
+        done.selected_ids || [],
+        done.discarded_ids || [],
+        (n, total, rel) => {
+          setStatus(`Parsing log ${n}/${total}: ${rel}`);
+        }
+      );
       setFailAnalysis(data);
       const s = data.summary || {};
-      setStatusTone("ok");
-      setStatus(
-        `Fail analysis: kept ${s.kept_total_fails || 0} fails across ${s.kept_with_fails || 0} patterns · discarded ${s.discarded_total_fails || 0} fails across ${s.discarded_with_fails || 0} patterns`
-      );
+      if (!data.files_with_status) {
+        setStatusTone("error");
+        setStatus(
+          "No STATUS:F / STATUS:P lines found in the selected logs. Use Advantest pattern execution logs."
+        );
+      } else {
+        setStatusTone("ok");
+        setStatus(
+          `Fail analysis: kept ${s.kept_total_fails || 0} fails across ${s.kept_with_fails || 0} patterns · discarded ${s.discarded_total_fails || 0} fails across ${s.discarded_with_fails || 0} patterns`
+        );
+      }
     } catch (err) {
       setStatus(err.message || String(err));
       setStatusTone("error");
@@ -757,9 +934,9 @@ export default function App() {
           <div className="panel-divider" />
           <h2>Fail logs</h2>
           <p className="field-hint">
-            Add log folders anytime (repeat for more). Click Analyze after a
-            simulation so fails map to Verilumen agent kept + discarded
-            patterns.
+            Client selects log folders on their own PC. Fail counts are computed
+            locally in the browser (files are not uploaded). Run simulation
+            first, then Analyze.
           </p>
           <input
             id="logs-folder"
