@@ -1,0 +1,17 @@
+uploads/
+client/node_modules/
+client/dist/
+node_modules/
+dist/
+*.pyc
+__pycache__/
+.streamlit/
+.env
+.env.*
+*.png
+ate_sim_result.json
+ate_sim_result.csv
+ate_sim_curve.csv
+ram_sim_result.csv
+.DS_Store
+
