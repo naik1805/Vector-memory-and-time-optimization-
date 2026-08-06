@@ -12,7 +12,7 @@ This app needs **Node + Python (PyTorch)**. A tunnel through your laptop is only
 3. Wait for the first Docker build (10–20+ minutes; PyTorch image is large).
 4. When status is **Live**, copy the URL, e.g.:
 
-   `https://vector-memory-optimization.onrender.com`
+   `https://test-time-optimization.onrender.com`
 
 5. Send **only that URL** to your client. They never see your source code.
 

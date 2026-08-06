@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: vector-memory-optimization
+    name: test-time-optimization
     runtime: docker
     plan: free
     region: oregon
