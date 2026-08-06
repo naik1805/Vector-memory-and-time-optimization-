@@ -9,6 +9,7 @@ __pycache__/
 .env
 .env.*
 *.png
+!docs/images/*.png
 ate_sim_result.json
 ate_sim_result.csv
 ate_sim_curve.csv

@@ -901,7 +901,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="hero">
-        <h1>vector memory and test time optimization — Verilumen simulation agent</h1>
+        <h1>test time optimization — Verilumen simulation agent</h1>
         <p>
           Upload a STIL and run. Click any filled Verilumen agent slot (or
           Prev/Next) to replay how that pick was chosen — yellow cells =
@@ -1046,7 +1046,7 @@ export default function App() {
             </div>
             <div className="ten-wrap">
               <TenSlots
-                title="Normal"
+                title="without verilumen agent order"
                 tone="normal"
                 slots={normalSlots}
                 cursor={focusStep}
@@ -1054,7 +1054,7 @@ export default function App() {
                 onSelect={jumpToStep}
               />
               <TenSlots
-                title="Verilumen agent"
+                title="with verilumen agent"
                 tone="lstm"
                 slots={lstmSlots}
                 cursor={focusStep}
@@ -1077,12 +1077,12 @@ export default function App() {
 
           <div className="gauges">
             <div className="gauge-card full">
-              <div className="label">Full-suite vector RAM</div>
+              <div className="label">without verilumen agent vector RAM</div>
               <div className="value">{fullMb.toFixed(2)} MB</div>
               <RamBar value={fullMb} max={gaugeMax} tone="full" />
             </div>
             <div className="gauge-card lstm">
-              <div className="label">Verilumen agent subset vector RAM</div>
+              <div className="label">with verilumen agent vector RAM</div>
               <div className="value">{lstmMb.toFixed(2)} MB</div>
               <RamBar value={lstmMb} max={gaugeMax} tone="lstm" />
             </div>
@@ -1090,7 +1090,7 @@ export default function App() {
 
           <div className="gauges">
             <div className="gauge-card full">
-              <div className="label">Full-suite test time</div>
+              <div className="label">without verilumen agent test time</div>
               <div className="value">
                 {done ? formatTestTime(done.full_ms) : "—"}
               </div>
@@ -1101,7 +1101,7 @@ export default function App() {
               />
             </div>
             <div className="gauge-card lstm">
-              <div className="label">Verilumen agent test time</div>
+              <div className="label">with verilumen agent test time</div>
               <div className="value">
                 {done ? formatTestTime(done.lstm_ms) : "—"}
               </div>
@@ -1144,8 +1144,8 @@ export default function App() {
 
           <div className="chart-wrap">
             <div className="chart-title">
-              Live ATE vector memory (MB) — red = full suite, green = Verilumen
-              agent subset
+              Live vector memory (MB) — red = without verilumen agent, green =
+              with verilumen agent
             </div>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={loadSeries} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
@@ -1180,7 +1180,7 @@ export default function App() {
                   yAxisId="ram"
                   type="monotone"
                   dataKey="full_mb"
-                  name="Full suite"
+                  name="without verilumen agent"
                   stroke="#e25b4c"
                   fill="url(#gFull)"
                   strokeWidth={2.5}
@@ -1190,7 +1190,7 @@ export default function App() {
                   yAxisId="ram"
                   type="monotone"
                   dataKey="lstm_mb"
-                  name="Verilumen agent"
+                  name="with verilumen agent"
                   stroke="#3ecf8e"
                   fill="url(#gLstm)"
                   strokeWidth={2.5}
@@ -1219,10 +1219,10 @@ export default function App() {
               patterns
               {done.reason ? <> — {done.reason}</> : null}
               <br />
-              Full suite <strong>{done.full_peak_mb} MB</strong> / test time{" "}
-              <strong>{formatTestTime(done.full_ms)}</strong>
+              Without verilumen agent <strong>{done.full_peak_mb} MB</strong> /
+              test time <strong>{formatTestTime(done.full_ms)}</strong>
               {" → "}
-              Verilumen agent set <strong>{done.lstm_peak_mb} MB</strong> /
+              With verilumen agent <strong>{done.lstm_peak_mb} MB</strong> /
               test time <strong>{formatTestTime(done.lstm_ms)}</strong>
               {" · "}
               saved <strong>{done.saved_mb} MB</strong> ({done.saved_pct}%)
@@ -1242,7 +1242,7 @@ export default function App() {
           {done && (
             <div className="lists-wrap">
               <PatternListPanel
-                title="Verilumen agent kept (full pick order)"
+                title="high recommended patterns order"
                 tone="keep"
                 ids={done.selected_ids}
                 emptyText="No kept patterns"
@@ -1250,7 +1250,7 @@ export default function App() {
                 sortByFails={Boolean(failAnalysis)}
               />
               <PatternListPanel
-                title="Discarded (not loaded)"
+                title="low risk patterns"
                 tone="discard"
                 ids={done.discarded_ids}
                 emptyText="Nothing discarded"
