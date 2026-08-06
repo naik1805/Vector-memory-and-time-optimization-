@@ -3,12 +3,10 @@ services:
     name: vector-memory-optimization
     runtime: docker
     plan: free
-    region: singapore
+    region: oregon
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: "8787"
       - key: PYTHON
-        value: python3
+        value: /opt/venv/bin/python

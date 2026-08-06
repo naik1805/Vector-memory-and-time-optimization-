@@ -1,27 +1,34 @@
-# Cloud image: UI + API + Python worker (no need for your PC to stay on)
+# Slim image aimed at Render Free (512 MB).
+# UI/API start without loading PyTorch; torch is only used when simulation runs.
 
-FROM python:3.11-slim-bookworm
+FROM node:20-bookworm-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     NODE_ENV=production \
-    PORT=8787 \
     PYTHON=python3
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates build-essential \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# CPU-only PyTorch (smaller than full CUDA build)
+# Create venv so pip works on Debian (PEP 668)
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY requirements.txt .
+# CPU torch only — drop matplotlib (not needed by live API worker)
 RUN pip install --upgrade pip \
-    && pip install torch --index-url https://download.pytorch.org/whl/cpu \
-    && pip install -r requirements.txt
+    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir numpy psutil \
+    && rm -rf /root/.cache/pip
 
 COPY package.json package-lock.json ./
 COPY client/package.json client/package-lock.json ./client/
@@ -29,8 +36,10 @@ RUN npm ci && npm ci --prefix client
 
 COPY . .
 RUN npm run build \
+    && rm -rf client/node_modules client/src \
     && npm prune --omit=dev \
-    && npm prune --omit=dev --prefix client
+    && npm cache clean --force
 
-EXPOSE 8787
+# Render sets $PORT at runtime — do not hardcode
+EXPOSE 10000
 CMD ["npm", "start"]

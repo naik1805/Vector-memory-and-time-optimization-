@@ -1,4 +1,3 @@
-# torch installed separately in Dockerfile (CPU wheel)
+# torch installed in Docker (CPU). Keep this file light for local pip too.
 numpy>=1.24
 psutil>=5.9
-matplotlib>=3.7
