@@ -171,9 +171,10 @@ def build():
     for i, t in enumerate(
         [
             "Upload a STIL file from the left panel.",
-            "Click <b>Run live simulation</b>. Then wait for the processing time — "
-            "the status line and progress bar show embedding and comparison while results load. "
-            "Do not move on until the run finishes (status shows Done).",
+            "Click <b>Run live simulation</b>. "
+            "<b>This will take some time to load</b> — please wait while processing runs. "
+            "The status line and progress bar show embedding and comparison as results load. "
+            "Do not move on until the run finishes (status shows <b>Done</b>).",
             "Review the first ten picks, memory gauges, and test-time gauges "
             "(without vs top 10 pick of verilumen agent).",
             "Add fail-log folders from your own computer.",
@@ -202,9 +203,10 @@ def build():
     story.append(
         Paragraph(
             "Use this panel to start work. <b>Step 1:</b> upload a <b>.stil</b> file. "
-            "<b>Step 2:</b> click <b>Run live simulation</b>, then wait for processing time "
-            "while the Verilumen agent embeds patterns and builds the comparison — "
-            "watch the status line and progress bar until the run is Done. "
+            "<b>Step 2:</b> click <b>Run live simulation</b>. "
+            "<b>This will take some time to load</b> — wait for processing while the Verilumen agent "
+            "embeds patterns and builds the comparison. "
+            "Watch the status line and progress bar until the run is <b>Done</b>. "
             "Use <b>Stop</b> only if you need to cancel. "
             "After the run finishes, add log folders with <b>Add log folder</b> "
             "(repeat for more folders) and click <b>Analyze fail counts</b>. "
@@ -292,17 +294,58 @@ def build():
             styles["body"],
         )
     )
-    pats = fit_image(IMG / "10-patterns.png", content_w, 32 * mm)
+    pats = fit_image(IMG / "10-patterns.png", content_w, 26 * mm)
     if pats:
         story.append(pats)
         story.append(Spacer(1, 1.2 * mm))
+
+    high = fit_image(IMG / "10a-high-recommended.png", content_w * 0.48, 48 * mm)
+    low = fit_image(IMG / "10b-low-risk.png", content_w * 0.48, 48 * mm)
+    cap_high = Paragraph(
+        "<b>High recommended patterns order</b> — full pick-order list of kept patterns "
+        "(scroll to review every loaded id).",
+        styles["small"],
+    )
+    cap_low = Paragraph(
+        "<b>Low risk patterns</b> — skipped patterns; click a chip to see why it was not loaded "
+        "(closest kept pattern and distance).",
+        styles["small"],
+    )
+    if high and low:
+        tbl = Table(
+            [[cap_high, cap_low], [high, low]],
+            colWidths=[content_w * 0.5, content_w * 0.5],
+        )
+        tbl.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 1.5 * mm),
+                ]
+            )
+        )
+        story.append(tbl)
+        story.append(Spacer(1, 1.2 * mm))
+    else:
+        if high:
+            story.append(cap_high)
+            story.append(high)
+            story.append(Spacer(1, 1 * mm))
+        if low:
+            story.append(cap_low)
+            story.append(low)
+            story.append(Spacer(1, 1.2 * mm))
 
     story.append(Paragraph("8. Fail count analysis", styles["h"]))
     story.append(
         Paragraph(
             "After you add logs and click <b>Analyze fail counts</b>, summary cards show "
             "folder count, kept fails, discarded fails, and files parsed. Two tables list "
-            "patterns with the most fails — left for kept patterns, right for discarded — "
+            "patterns with the most fails — left <b>high recommended patterns fails</b>, "
+            "right <b>low risk patterns fail</b> — "
             "sorted highest-first so you can judge coverage risk quickly.",
             styles["body"],
         )

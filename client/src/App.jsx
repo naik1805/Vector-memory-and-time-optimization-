@@ -1310,13 +1310,13 @@ export default function App() {
               </p>
               <div className="lists-wrap">
                 <FailTable
-                  title="Fails in Verilumen agent–kept patterns"
+                  title="high recommended patterns fails"
                   tone="keep"
                   rows={failAnalysis.kept}
                   emptyText="No fails among kept patterns in these logs"
                 />
                 <FailTable
-                  title="Fails in discarded patterns"
+                  title="low risk patterns fail"
                   tone="discard"
                   rows={failAnalysis.discarded}
                   emptyText="No fails among discarded patterns in these logs"

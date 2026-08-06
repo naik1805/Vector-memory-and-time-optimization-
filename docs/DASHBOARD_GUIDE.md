@@ -31,7 +31,7 @@ On the **right**, you see live results: how patterns are chosen, how much vector
 Use the dashboard in this order:
 
 **Step 1.** Upload your STIL file from the left panel.  
-**Step 2.** Click **Run live simulation**, then wait for the processing time to load — the status line and progress bar show embedding and comparison. Do not continue until the run finishes (status shows Done).  
+**Step 2.** Click **Run live simulation**. **This will take some time to load** — please wait while processing runs. The status line and progress bar show embedding and comparison. Do not continue until the run finishes (status shows **Done**).  
 **Step 3.** Review the first ten pattern picks, the memory gauges, and the test-time gauges.  
 **Step 4.** Add your fail-log folders from your own computer.  
 **Step 5.** Click **Analyze fail counts** for **high recommended patterns order** and **low risk patterns**.
@@ -62,7 +62,7 @@ This panel is where you start all work.
 
 ### Uploading and running a STIL file
 
-First, upload a STIL file (usually ending in `.stil`). After the file name appears, click **Run live simulation**. Then wait for the processing time — the agent embeds patterns, compares them, and loads results on the right. Watch the status line and yellow progress bar until the run is Done before reviewing gauges or adding fail logs.
+First, upload a STIL file (usually ending in `.stil`). After the file name appears, click **Run live simulation**. **This will take some time to load** — please wait while the agent embeds patterns, compares them, and loads results on the right. Watch the status line and yellow progress bar until the run is **Done** before reviewing gauges or adding fail logs.
 
 If you need to cancel a run that is still in progress, click **Stop**.
 
@@ -192,11 +192,15 @@ After the run, two lists appear side by side.
 
 These are the patterns Verilumen selected to keep in vector memory, shown in pick order. Each chip shows a pattern id such as P0 or P237.
 
+![High recommended patterns order](images/10a-high-recommended.png)
+
 If you have already analyzed fail logs, a small red badge such as **8F** may appear on a chip. That means the pattern had 8 fails across the logs you provided.
 
 ### Low risk patterns (red)
 
 These patterns were valid but not loaded. The agent skipped them to save memory and time, usually because they were too similar to a pattern already kept and would add little new coverage.
+
+![Low risk patterns](images/10b-low-risk.png)
 
 Click any low-risk chip to read a short explanation for that specific pattern — which kept pattern it was closest to, and the distance score.
 
@@ -212,10 +216,10 @@ At the top, summary cards show how many log folders were used, total fails among
 
 Below that, two tables list patterns with the highest fail counts:
 
-- the left table covers **kept** patterns,  
-- the right table covers **discarded** patterns.
+- the left table is **high recommended patterns fails**,  
+- the right table is **low risk patterns fail**.
 
-Each row shows the pattern id, number of fails, and number of passes. Rows are ordered so the patterns with the most fails appear first. This helps you judge whether the agent kept the important failing patterns, and what risk exists among the patterns that were discarded.
+Each row shows the pattern id, number of fails, and number of passes. Rows are ordered so the patterns with the most fails appear first. This helps you judge whether the agent kept the important failing patterns, and what risk exists among the low risk patterns.
 
 ---
 
