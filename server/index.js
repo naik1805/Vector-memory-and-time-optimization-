@@ -317,8 +317,8 @@ if (fs.existsSync(CLIENT_DIST)) {
 }
 
 const PORT = Number(process.env.PORT || 8787);
-app.listen(PORT, () => {
-  console.log(`ATE vector-memory app on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`ATE vector-memory app on http://0.0.0.0:${PORT}`);
   if (fs.existsSync(CLIENT_DIST)) {
     console.log(`Serving UI from ${CLIENT_DIST}`);
   } else {
