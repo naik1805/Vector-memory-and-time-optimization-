@@ -8,7 +8,7 @@
   <style>
     :root {
       --bg:#0e1116; --panel:#161b22; --panel-2:#1c232d; --stroke:#2a3340;
-      --text:#e8edf4; --muted:#8b98a8; --full:#e25b4c; --lstm:#3ecf8e;
+      --text:#e8edf4; --muted:#8b98a8; --full:#5b8fd4; --lstm:#3ecf8e;
       --rss:#4ea1f3; --accent:#d4a017; --warn:#f0b429;
       font-family:"IBM Plex Sans",system-ui,sans-serif; color:var(--text); background:var(--bg);
     }
@@ -75,22 +75,31 @@
     .lists-wrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
     .pattern-panel{border:1px solid var(--stroke);background:#0b0e12;min-height:180px}
     .pattern-panel.keep{border-color:#2d5a42}
-    .pattern-panel.discard{border-color:#5a3d3d}
+    .pattern-panel.discard{border-color:#3d5a7a}
     .pattern-panel-head{display:flex;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--stroke)}
     .pattern-panel.keep .pattern-panel-head h2{margin:0;font-size:.95rem;color:var(--lstm)}
     .pattern-panel.discard .pattern-panel-head h2{margin:0;font-size:.95rem;color:var(--full)}
     .pattern-panel-body{padding:10px 12px}
     .pattern-id-grid{display:flex;flex-wrap:wrap;gap:6px}
     .pattern-id-chip{font-family:"IBM Plex Mono",monospace;font-size:.72rem;border:1px solid #2d5a42;padding:4px 7px;background:#132019;color:var(--lstm)}
-    .pattern-panel.discard .pattern-id-chip{border-color:#5a3d3d;color:#c98989;background:#1a1212}
-    .fail-badge{margin-left:2px;padding:0 4px;font-size:.62rem;font-weight:700;background:#5a2020;color:#ffb4b4;border:1px solid #7a3030}
-    .discard-example{margin:0 12px;padding:10px 12px;border:1px solid #5a3d3d;background:#1a1212}
+    .pattern-panel.discard .pattern-id-chip{border-color:#3d5a7a;color:#8eb4d4;background:#121820}
+    .fail-badge{margin-left:2px;padding:0 4px;font-size:.62rem;font-weight:700;background:#5a4820;color:#f0d78c;border:1px solid #8a6d00}
+    .discard-example{margin:0 12px;padding:10px 12px;border:1px solid #3d5a7a;background:#121820}
     .discard-example-title{font-size:.78rem;font-weight:700;color:var(--full);margin-bottom:6px}
     .discard-example-body{margin:0 0 8px;font-size:.85rem;line-height:1.45}
+    .discard-bits-caption{font-size:.72rem;color:var(--muted);margin:8px 0 6px;line-height:1.35}
+    .bit-strip-wrap{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+    .bit-strip-label{font-size:.65rem;color:var(--muted);text-transform:uppercase}
+    .bit-strip{display:flex;flex-wrap:wrap;gap:1px}
+    .bit-cell{width:10px;height:12px;display:inline-flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:.5rem;font-weight:700;border:1px solid #2a3340;background:#161b22;color:#8b949e}
+    .bit-cell.one{color:#c9d1d9}
+    .bit-cell.same{outline:1px solid #d4a017;background:#3d2e0a;color:#f0c040}
+    .bit-cell.diff-red{outline:1px solid #5b8fd4;background:#1a2838;color:#8eb4d4}
+    .bit-cell.diff{outline:1px solid #e3b341;background:#3d3218;color:#f0d78c}
     .fail-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0 14px}
     .fail-table-panel{border:1px solid var(--stroke);background:#0b0e12;padding:10px 12px}
     .fail-table-panel.keep{border-color:#2d5a42}
-    .fail-table-panel.discard{border-color:#5a3d3d}
+    .fail-table-panel.discard{border-color:#3d5a7a}
     .fail-table-panel h3{margin:0 0 8px;font-size:.9rem}
     .fail-table-panel.keep h3{color:var(--lstm)}
     .fail-table-panel.discard h3{color:var(--full)}
@@ -195,7 +204,7 @@
         </div>
 
         <div class="chart-wrap shot" data-shot="08-chart">
-          <div class="chart-title">Live vector memory (MB) — red = without verilumen agent, green = with verilumen agent</div>
+          <div class="chart-title">Live vector memory (MB) — blue = without verilumen agent, green = with verilumen agent</div>
           <div class="fake-chart"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
         </div>
 
@@ -223,6 +232,9 @@
             <div class="discard-example">
               <div class="discard-example-title">EXAMPLE — WHY P648 WAS NOT LOADED</div>
               <p class="discard-example-body">P648 is a valid pattern; however, it was not selected for loading because its Verilumen agent embedding shows high similarity with the already retained pattern P751 (distance = 0.0449). Since it provides minimal additional stimulus coverage, it was excluded to optimize vector RAM utilization.</p>
+              <div class="discard-bits-caption">Bit-level compare (234 scan bits) — embedding distance 0.0449 · Yellow = different bits</div>
+              <div class="bit-strip-wrap"><span class="bit-strip-label">Kept P751</span><div class="bit-strip" id="demo-kept-bits"></div></div>
+              <div class="bit-strip-wrap"><span class="bit-strip-label">Low-risk P648 (not loaded)</span><div class="bit-strip" id="demo-disc-bits"></div></div>
             </div>
             <div class="pattern-panel-body">
               <div class="pattern-id-grid">
@@ -271,12 +283,29 @@
   </div>
   <script>
     const strip = document.getElementById('bits');
-    for (let i = 0; i < 60; i++) {
-      const s = document.createElement('span');
-      const one = Math.random() > 0.5;
-      s.className = 'bit-cell ' + (one ? 'one' : 'zero') + (Math.random() > 0.85 ? ' diff' : '');
-      s.textContent = one ? '1' : '0';
-      strip.appendChild(s);
+    if (strip) {
+      for (let i = 0; i < 60; i++) {
+        const s = document.createElement('span');
+        const one = Math.random() > 0.5;
+        s.className = 'bit-cell ' + (one ? 'one' : 'zero') + (Math.random() > 0.85 ? ' diff' : '');
+        s.textContent = one ? '1' : '0';
+        strip.appendChild(s);
+      }
+    }
+    const kept = document.getElementById('demo-kept-bits');
+    const disc = document.getElementById('demo-disc-bits');
+    if (kept && disc) {
+      for (let i = 0; i < 234; i++) {
+        const a = Math.random() > 0.45 ? 1 : 0;
+        const diff = Math.random() > 0.92;
+        const b = diff ? 1 - a : a;
+        for (const [el, v] of [[kept, a], [disc, b]]) {
+          const s = document.createElement('span');
+          s.className = 'bit-cell ' + (v ? 'one' : 'zero') + (diff ? ' diff' : '');
+          s.textContent = String(v);
+          el.appendChild(s);
+        }
+      }
     }
   </script>
 </body>

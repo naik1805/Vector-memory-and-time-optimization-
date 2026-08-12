@@ -443,6 +443,9 @@ def main() -> int:
             nearest_pid = selected_list[nj]
             dist_v = float(dists[nj])
             overall_rank = ranked_ids.index(pid) + 1 if pid in ranked_ids else d_rank
+            disc_bits = bits_by_id.get(pid, [0] * 234)
+            kept_bits = bits_by_id.get(nearest_pid, [0] * 234)
+            cmp = bits_compare(disc_bits, kept_bits)
             discarded_details.append(
                 {
                     "pattern_id": pid,
@@ -450,6 +453,11 @@ def main() -> int:
                     "diversity_rank": overall_rank,
                     "nearest_kept": nearest_pid,
                     "distance_to_nearest": round(dist_v, 4),
+                    "bits": disc_bits,
+                    "nearest_bits": kept_bits,
+                    "flip": cmp["flip"],
+                    "n_same": cmp["n_same"],
+                    "n_diff": cmp["n_diff"],
                     "reason": (
                         f"P{pid} is a valid pattern; however, it was not selected "
                         f"for loading because its Verilumen agent embedding shows "
@@ -458,6 +466,36 @@ def main() -> int:
                         f"provides minimal additional stimulus coverage, it was "
                         f"excluded to optimize vector RAM utilization."
                     ),
+                }
+            )
+
+        selected_details = []
+        for s_rank, pid in enumerate(selected_list, start=1):
+            i = id_to_idx.get(pid)
+            if i is None or sel_x is None or len(sel_x) == 0:
+                continue
+            # distance to nearest *other* kept pattern (seed has no peer)
+            peer_mask = np.ones(len(sel_idx), dtype=bool)
+            try:
+                self_j = selected_list.index(pid)
+                peer_mask[self_j] = False
+            except ValueError:
+                pass
+            if not peer_mask.any():
+                dist_v = 0.0
+                nearest_pid = pid
+            else:
+                dists = np.linalg.norm(sel_x[peer_mask] - x_emb[i], axis=1)
+                nj = int(np.argmin(dists))
+                peer_ids = [p for k, p in enumerate(selected_list) if peer_mask[k]]
+                nearest_pid = peer_ids[nj]
+                dist_v = float(dists[nj])
+            selected_details.append(
+                {
+                    "pattern_id": pid,
+                    "keep_rank": s_rank,
+                    "nearest_kept": nearest_pid,
+                    "distance_to_nearest": round(dist_v, 4),
                 }
             )
 
@@ -480,6 +518,7 @@ def main() -> int:
                 "keep_ratio": round(len(selected) / max(len(ids), 1), 4),
                 "reason": reason,
                 "selected_ids": list(selected_list),
+                "selected_details": selected_details,
                 "discarded_ids": discarded_ids,
                 "discarded_details": discarded_details,
                 "discard_example": discarded_details[0] if discarded_details else None,

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -10,27 +10,60 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { recommendNextChipGreedyMl } from "./nextChipRecommend";
 
 const API = "";
 const FIRST_N = 10;
+const THEME_KEY = "verilumen-theme";
+
+function readStoredTheme() {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    if (t === "light" || t === "dark") return t;
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== "undefined" && window.matchMedia) {
+    return window.matchMedia("(prefers-color-scheme: light)").matches
+      ? "light"
+      : "dark";
+  }
+  return "dark";
+}
 
 /** Advantest logs use P1..P1000; Verilumen / STIL ids are 0..999. */
 function logLabelToPatternId(label) {
   return label <= 0 ? label : label - 1;
 }
 
-function folderKeyFromRel(rel) {
-  const parts = String(rel || "").replace(/\\/g, "/").split("/").filter(Boolean);
-  return parts.length >= 2 ? parts[0] : "(root)";
+/** One die/chip id per log: folder name if nested, else file basename. */
+function dieKeyFromRel(rel) {
+  const parts = String(rel || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean);
+  if (parts.length >= 2) return parts[0];
+  const name = parts[0] || "(root)";
+  return name.replace(/\.[^.]+$/, "") || name;
 }
 
-/** Parse one Advantest-style die log → { [patternId]: { fails, passes } }. */
+/** @deprecated use dieKeyFromRel — kept name alias for call sites */
+function folderKeyFromRel(rel) {
+  return dieKeyFromRel(rel);
+}
+
+/**
+ * Parse one Advantest-style die log →
+ * { [patternId]: { fails, passes, channel_fails, fail_channels } }.
+ */
 function parseAteLogText(text) {
-  const atePat = /^P(\d+)\s*\|/i;
+  const atePat = /^P(\d+)\s*\|\s*(?:CH(\d+))?/i;
   const ateStatus = /STATUS\s*:\s*([FP])\b/i;
   let cur = null;
+  let curCh = null;
   const hasFail = new Map();
   const hasStatus = new Map();
+  const channelFails = new Map(); // label -> Set(channel)
   let hits = 0;
 
   for (const raw of String(text).split(/\r?\n/)) {
@@ -38,13 +71,24 @@ function parseAteLogText(text) {
     const m = line.match(atePat);
     if (m) {
       cur = Number(m[1]);
+      curCh = m[2] != null ? Number(m[2]) : null;
       continue;
     }
     const sm = line.match(ateStatus);
     if (!sm || cur == null) continue;
     hits += 1;
     hasStatus.set(cur, true);
-    if (String(sm[1]).toUpperCase() === "F") hasFail.set(cur, true);
+    if (String(sm[1]).toUpperCase() === "F") {
+      hasFail.set(cur, true);
+      if (curCh != null) {
+        if (!channelFails.has(cur)) channelFails.set(cur, new Set());
+        channelFails.get(cur).add(curCh);
+      } else {
+        // STATUS:F without CH on same header line — still count one channel hit
+        if (!channelFails.has(cur)) channelFails.set(cur, new Set());
+        channelFails.get(cur).add(-1);
+      }
+    }
   }
 
   if (!hits) return null;
@@ -52,9 +96,24 @@ function parseAteLogText(text) {
   const counts = {};
   for (const label of hasStatus.keys()) {
     const pid = logLabelToPatternId(label);
-    if (!counts[pid]) counts[pid] = { fails: 0, passes: 0 };
-    if (hasFail.get(label)) counts[pid].fails += 1;
-    else counts[pid].passes += 1;
+    if (!counts[pid]) {
+      counts[pid] = {
+        fails: 0,
+        passes: 0,
+        channel_fails: 0,
+        fail_channels: [],
+      };
+    }
+    if (hasFail.get(label)) {
+      counts[pid].fails += 1;
+      const chs = channelFails.get(label);
+      if (chs) {
+        counts[pid].channel_fails += chs.size;
+        counts[pid].fail_channels = [...chs].filter((c) => c >= 0);
+      }
+    } else {
+      counts[pid].passes += 1;
+    }
   }
   return counts;
 }
@@ -76,6 +135,10 @@ async function analyzeLogsInBrowser(logItems, selectedIds, discardedIds, onProgr
         passes: 0,
         by_folder: {},
         files: [],
+        dies_failed: new Set(),
+        channel_fails: 0,
+        fail_channels: new Set(),
+        recent_fail_mass: 0,
       });
     }
     return perPattern.get(pid);
@@ -97,10 +160,18 @@ async function analyzeLogsInBrowser(logItems, selectedIds, discardedIds, onProgr
     );
   });
 
+  // First pass: collect folder names so drift weights are stable
+  for (const item of usable) {
+    const rel = (item.rel || item.file.name || "").replace(/\\/g, "/");
+    foldersSeen.add(folderKeyFromRel(rel));
+  }
+  const folderOrder = [...foldersSeen].sort();
+  const folderIdx = Object.fromEntries(folderOrder.map((f, i) => [f, i]));
+  const nFold = Math.max(folderOrder.length, 1);
+
   for (let i = 0; i < usable.length; i++) {
     const item = usable[i];
     const rel = (item.rel || item.file.name || "").replace(/\\/g, "/");
-    foldersSeen.add(folderKeyFromRel(rel));
     onProgress?.(i + 1, usable.length, rel);
 
     let text = "";
@@ -116,15 +187,24 @@ async function analyzeLogsInBrowser(logItems, selectedIds, discardedIds, onProgr
     if (!fileCounts) continue;
     filesWithStatus += 1;
     const folder = folderKeyFromRel(rel);
+    const fIdx = folderIdx[folder] ?? 0;
+    const drift =
+      nFold <= 1 ? 1 : 0.35 + 0.65 * Math.pow(2, (fIdx / (nFold - 1) - 1) * 1.5);
 
     for (const [pidStr, cp] of Object.entries(fileCounts)) {
       const pid = Number(pidStr);
       const row = ensure(pid);
       row.fails += cp.fails;
       row.passes += cp.passes;
+      row.channel_fails += cp.channel_fails || 0;
+      for (const ch of cp.fail_channels || []) row.fail_channels.add(ch);
       if (!row.by_folder[folder]) row.by_folder[folder] = { fails: 0, passes: 0 };
       row.by_folder[folder].fails += cp.fails;
       row.by_folder[folder].passes += cp.passes;
+      if (cp.fails > 0) {
+        row.dies_failed.add(folder);
+        row.recent_fail_mass += drift * cp.fails;
+      }
       if (cp.fails || cp.passes) {
         row.files.push({ path: rel, fails: cp.fails, passes: cp.passes });
       }
@@ -140,14 +220,21 @@ async function analyzeLogsInBrowser(logItems, selectedIds, discardedIds, onProgr
         const row = perPattern.get(pid);
         const fails = row ? row.fails : 0;
         const passes = row ? row.passes : 0;
+        const total = fails + passes;
         return {
           pattern_id: pid,
           fails,
           passes,
-          total: fails + passes,
-          fail_rate: fails / Math.max(fails + passes, 1),
+          total,
+          fail_rate: fails / Math.max(total, 1),
           by_folder: row ? row.by_folder : {},
           files: row ? row.files.slice(0, 20) : [],
+          dies_failed: row ? [...row.dies_failed] : [],
+          channel_fails: row ? row.channel_fails : 0,
+          fail_channels: row ? [...row.fail_channels].sort((a, b) => a - b) : [],
+          recent_fail_mass: row
+            ? row.recent_fail_mass / Math.max(fails + passes, 1)
+            : 0,
         };
       })
       .sort((a, b) => b.fails - a.fails || a.pattern_id - b.pattern_id);
@@ -229,12 +316,68 @@ function PatternListPanel({
           <div className="discard-example-meta">
             Closest kept: <strong>P{example.nearest_kept}</strong>
             {" · "}
-            distance {example.distance_to_nearest}
+            embedding distance{" "}
+            <strong>{example.distance_to_nearest}</strong>
             {" · "}
             diversity rank #{example.diversity_rank}
+            {example.n_diff != null && (
+              <>
+                {" · "}
+                bit distance <strong>{example.n_diff}</strong> different /{" "}
+                <strong>{example.n_same}</strong> same
+              </>
+            )}
           </div>
+          {example.bits && example.nearest_bits && (
+            <div className="discard-bits-compare">
+              <div className="keep-vs-skip">
+                <div className="keep-vs-skip-side keep">
+                  <span className="keep-vs-skip-role">Kept</span>
+                  <span className="keep-vs-skip-pid">P{example.nearest_kept}</span>
+                </div>
+                <div className="keep-vs-skip-mid">
+                  <div className="keep-vs-skip-diff">
+                    <strong>{example.n_diff ?? "—"}</strong> bits different
+                  </div>
+                  <div className="keep-vs-skip-same">
+                    <strong>{example.n_same ?? "—"}</strong> bits the same
+                  </div>
+                  <div className="keep-vs-skip-scores">
+                    bit distance <strong>{example.n_diff ?? "—"}</strong>
+                    {" · "}
+                    embedding distance{" "}
+                    <strong>{example.distance_to_nearest}</strong>
+                  </div>
+                </div>
+                <div className="keep-vs-skip-side skip">
+                  <span className="keep-vs-skip-role">Not loaded</span>
+                  <span className="keep-vs-skip-pid">P{example.pattern_id}</span>
+                </div>
+              </div>
+              <div className="discard-bits-caption">
+                P{example.nearest_kept} was <strong>kept</strong> and P
+                {example.pattern_id} was <strong>not loaded</strong> because they
+                differ in only <strong>{example.n_diff ?? "—"}</strong> of 234
+                bits (<strong>{example.n_same ?? "—"}</strong> the same) —
+                embedding distance{" "}
+                <strong>{example.distance_to_nearest}</strong>. Yellow cells mark
+                those different bits.
+              </div>
+              <BitStrip
+                bits={example.nearest_bits}
+                flip={example.flip}
+                label={`Kept P${example.nearest_kept}`}
+              />
+              <BitStrip
+                bits={example.bits}
+                flip={example.flip}
+                label={`Not loaded P${example.pattern_id}`}
+              />
+            </div>
+          )}
           <div className="discard-example-hint">
-            Click any discarded chip below to see why that one was skipped.
+            Click any low-risk chip below to compare its bits with the closest
+            kept pattern.
           </div>
         </div>
       )}
@@ -246,6 +389,8 @@ function PatternListPanel({
             {list.map((pid, i) => {
               const active = selectedId === pid;
               const fails = failById?.[pid]?.fails;
+              const detail = detailsById?.[pid];
+              const embDist = detail?.distance_to_nearest;
               const Chip = onSelectId ? "button" : "span";
               return (
                 <Chip
@@ -258,15 +403,20 @@ function PatternListPanel({
                   title={
                     fails != null
                       ? `P${pid}: ${fails} fail(s)` +
-                        (detailsById?.[pid]?.reason
-                          ? ` — ${detailsById[pid].reason}`
-                          : "")
-                      : detailsById?.[pid]?.reason ||
-                        (tone === "discard" ? "Click for why discarded" : undefined)
+                        (detail?.reason ? ` — ${detail.reason}` : "")
+                      : detail?.reason ||
+                        (tone === "discard"
+                          ? "Click for why discarded"
+                          : undefined)
                   }
                 >
                   <span className="pattern-rank">#{i + 1}</span>
-                  P{pid}
+                  <span className="pattern-id-main">P{pid}</span>
+                  {embDist != null && (
+                    <span className="emb-dist" title="Embedding distance to closest kept">
+                      d={embDist}
+                    </span>
+                  )}
                   {fails > 0 && <span className="fail-badge">{fails}F</span>}
                 </Chip>
               );
@@ -278,44 +428,112 @@ function PatternListPanel({
   );
 }
 
-function FailTable({ title, tone, rows, emptyText }) {
-  const failing = (rows || []).filter((r) => r.fails > 0);
+
+
+function tierLabel(tier) {
+  if (tier === "log_fail_greedy") return "log fail";
+  if (tier === "log_fail") return "log fail";
+  if (tier === "ml_unseen") return "ml unseen";
+  return tier || "—";
+}
+
+function NextChipRecommend({ nextChip }) {
+  if (!nextChip?.recommend?.length) return null;
+
+  const copyList = () => {
+    const text = nextChip.recommend.map((r) => `P${r.pattern_id}`).join(", ");
+    try {
+      navigator.clipboard?.writeText(text);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const nLogFail = nextChip.n_log_fail ?? 0;
+  const nMl = nextChip.n_ml_unseen ?? 0;
+
   return (
-    <div className={`fail-table-panel ${tone}`}>
-      <div className="fail-table-head">
-        <h3>{title}</h3>
-        <span className="chooser-meta">
-          {failing.length} with fails · {(rows || []).length} total
-        </span>
-      </div>
-      {failing.length === 0 ? (
-        <div className="how-pick-idle">{emptyText || "No fails in this set"}</div>
-      ) : (
-        <div className="fail-table-scroll">
-          <table className="fail-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Pattern</th>
-                <th>Fails</th>
-                <th>Passes</th>
-                <th>Fail rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {failing.map((r, i) => (
-                <tr key={`${tone}-f-${r.pattern_id}`}>
-                  <td>{i + 1}</td>
-                  <td>P{r.pattern_id}</td>
-                  <td className="fail-num">{r.fails}</td>
-                  <td>{r.passes}</td>
-                  <td>{(r.fail_rate * 100).toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className="next-chip">
+      <div className="next-chip-head">
+        <div>
+          <h2>Recommended patterns for next chip</h2>
+          <p className="field-hint">
+            From your logs only: <strong>1 log = 1 die/chip</strong>. Every
+            pattern that failed on that chip is included, ordered by severity
+            (channels → fail rate → fails). Patterns that only passed are
+            skipped.
+          </p>
         </div>
-      )}
+        <button type="button" className="btn secondary" onClick={copyList}>
+          Copy ordered list
+        </button>
+      </div>
+
+      <div className="fail-summary next-chip-metrics">
+        <div className="metric">
+          <div className="k">Recommend</div>
+          <div className="v">
+            {nextChip.recommend.length}
+            <span className="v-sub"> / {nextChip.n_patterns_total}</span>
+          </div>
+        </div>
+        <div className="metric">
+          <div className="k">Failed in logs</div>
+          <div className="v">
+            {nextChip.n_failing_patterns ?? nLogFail}
+            <span className="v-sub"> must-run</span>
+          </div>
+        </div>
+        <div className="metric">
+          <div className="k">Log pass → skip</div>
+          <div className="v">{nextChip.n_log_pass_skip ?? "—"}</div>
+        </div>
+        <div className="metric">
+          <div className="k">Log fail / ML unseen</div>
+          <div className="v" style={{ fontSize: "0.95rem" }}>
+            {nLogFail} · {nMl}
+          </div>
+        </div>
+      </div>
+
+      <div className="next-chip-scroll">
+        <table className="fail-table next-chip-table">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Pattern</th>
+              <th>Tier</th>
+              <th>Fail rate</th>
+              <th>Fails</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            {nextChip.recommend.map((r) => (
+              <tr
+                key={`next-${r.pattern_id}-${r.rank}`}
+                className={`tier-${r.tier}`}
+              >
+                <td>{r.rank}</td>
+                <td>
+                  P{r.pattern_id}
+                  {r.discarded ? (
+                    <span className="tier-pill skip-pill">was skip</span>
+                  ) : null}
+                </td>
+                <td>
+                  <span className={`tier-pill tier-${r.tier}`}>
+                    {tierLabel(r.tier)}
+                  </span>
+                </td>
+                <td>{(r.fail_rate * 100).toFixed(1)}%</td>
+                <td className={r.fails ? "fail-num" : ""}>{r.fails}</td>
+                <td className="why-cell">{(r.reasons || []).join(" · ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -381,24 +599,29 @@ function TenSlots({ title, tone, slots, cursor, selectedStep, onSelect }) {
   );
 }
 
-function BitStrip({ bits, flip, label }) {
+function BitStrip({ bits, flip, label, markSame, diffClass = "diff" }) {
   const list = bits || [];
   return (
     <div className="bit-strip-wrap">
       {label && <span className="bit-strip-label">{label}</span>}
       <div className="bit-strip">
-        {list.map((b, i) => (
-          <span
-            key={`b-${i}`}
-            className={[
-              "bit-cell",
-              b === 1 ? "one" : "zero",
-              flip && flip[i] ? "diff" : "",
-            ].join(" ")}
-          >
-            {b}
-          </span>
-        ))}
+        {list.map((b, i) => {
+          const isDiff = flip && flip[i];
+          const isSame = markSame && flip && !flip[i];
+          return (
+            <span
+              key={`b-${i}`}
+              className={[
+                "bit-cell",
+                b === 1 ? "one" : "zero",
+                isDiff ? diffClass : "",
+                isSame ? "same" : "",
+              ].join(" ")}
+            >
+              {b}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -571,6 +794,8 @@ async function readSse(response, onEvent) {
 }
 
 export default function App() {
+  const [theme, setTheme] = useState(readStoredTheme);
+  const [processMode, setProcessMode] = useState("pre"); // pre = STIL predict, post = log analysis
   const [file, setFile] = useState(null);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("Upload a STIL file, then click Run live simulation.");
@@ -597,6 +822,41 @@ export default function App() {
   const [analyzingFails, setAnalyzingFails] = useState(false);
   const logInputRef = useRef(null);
   const logFilesInputRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
+
+  const chartColors = useMemo(
+    () =>
+      theme === "light"
+        ? {
+            grid: "#d0d7de",
+            tick: "#5a6570",
+            tooltipBg: "#ffffff",
+            tooltipBorder: "#d0d7de",
+            tooltipText: "#1a1f26",
+            full: "#3d6ea8",
+            lstm: "#1f8f5f",
+            rss: "#2b7fd4",
+          }
+        : {
+            grid: "#2a3340",
+            tick: "#8b98a8",
+            tooltipBg: "#161b22",
+            tooltipBorder: "#2a3340",
+            tooltipText: "#e8edf4",
+            full: "#5b8fd4",
+            lstm: "#3ecf8e",
+            rss: "#4ea1f3",
+          },
+    [theme]
+  );
 
   const gaugeMax = useMemo(() => {
     const peak = profile?.full_peak_mb || Math.max(fullMb, lstmMb, 1);
@@ -650,14 +910,6 @@ export default function App() {
     setFollowLive(true);
     setFailAnalysis(null);
   };
-
-  const failById = useMemo(() => {
-    if (!failAnalysis) return null;
-    const map = {};
-    for (const r of failAnalysis.kept || []) map[r.pattern_id] = r;
-    for (const r of failAnalysis.discarded || []) map[r.pattern_id] = r;
-    return map;
-  }, [failAnalysis]);
 
   const addLogFolder = (fileList) => {
     const incoming = Array.from(fileList || []);
@@ -715,6 +967,14 @@ export default function App() {
           setStatus(`Parsing log ${n}/${total}: ${rel}`);
         }
       );
+
+      let nextChip = null;
+      if (data.files_with_status) {
+        setStatus("Running greedy + ML next-chip ranking…");
+        nextChip = recommendNextChipGreedyMl(data, done);
+        data.next_chip = nextChip;
+      }
+
       setFailAnalysis(data);
       const s = data.summary || {};
       if (!data.files_with_status) {
@@ -724,8 +984,13 @@ export default function App() {
         );
       } else {
         setStatusTone("ok");
+        const nRec = nextChip?.recommend?.length ?? 0;
+        const nFail = nextChip?.n_failing_patterns ?? 0;
+        const nSkipPass = nextChip?.n_log_pass_skip ?? 0;
         setStatus(
-          `Fail analysis: kept ${s.kept_total_fails || 0} fails across ${s.kept_with_fails || 0} patterns · discarded ${s.discarded_total_fails || 0} fails across ${s.discarded_with_fails || 0} patterns`
+          `Next-chip: ${nRec} to run (${nFail} failed in logs, ` +
+            `${nextChip?.n_ml_unseen ?? 0} ML not-in-log) · ` +
+            `${nSkipPass} log pass-only skipped`
         );
       }
     } catch (err) {
@@ -901,18 +1166,70 @@ export default function App() {
   return (
     <div className="app">
       <header className="hero">
-        <h1>test time optimization — Verilumen simulation agent</h1>
-        <p>
-          Upload a STIL and run. Click any filled Verilumen agent slot (or
-          Prev/Next) to replay how that pick was chosen — yellow cells =
-          different 0/1 bits.
-        </p>
-        <div className="flow">STIL → compile → vector memory → playback → DUT pins</div>
+        <div className="hero-copy">
+          <h1>test time optimization — Verilumen simulation agent</h1>
+          <p>
+            Pre-process: STIL → pattern prediction. Post-process: ATE logs →
+            fail analysis. Click any filled Verilumen agent slot (or Prev/Next)
+            to replay how that pick was chosen — yellow cells = different 0/1
+            bits.
+          </p>
+          <div className="flow">
+            Pre: STIL → predict · Post: logs → fail analysis
+          </div>
+        </div>
+        <div className="theme-toggle" role="group" aria-label="Color theme">
+          <button
+            type="button"
+            className={theme === "light" ? "active" : ""}
+            onClick={() => setTheme("light")}
+            aria-pressed={theme === "light"}
+          >
+            Light
+          </button>
+          <button
+            type="button"
+            className={theme === "dark" ? "active" : ""}
+            onClick={() => setTheme("dark")}
+            aria-pressed={theme === "dark"}
+          >
+            Dark
+          </button>
+        </div>
       </header>
 
+      <div className="process-switch" role="tablist" aria-label="Process stage">
+        <button
+          type="button"
+          role="tab"
+          className={processMode === "pre" ? "active" : ""}
+          aria-selected={processMode === "pre"}
+          onClick={() => setProcessMode("pre")}
+        >
+          <span className="process-k">Pre-process</span>
+          <span className="process-v">STIL → pattern prediction</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={processMode === "post" ? "active" : ""}
+          aria-selected={processMode === "post"}
+          onClick={() => setProcessMode("post")}
+        >
+          <span className="process-k">Post-process</span>
+          <span className="process-v">ATE logs → fail analysis</span>
+        </button>
+      </div>
+
+      {processMode === "pre" && (
       <div className="layout">
         <aside className="panel">
+          <div className="process-panel-tag">Pre-process</div>
           <h2>STIL file</h2>
+          <p className="field-hint">
+            Before ATE: upload a STIL and run the Verilumen agent to predict
+            which patterns to load and which to skip.
+          </p>
           <div className="field">
             <label htmlFor="stil">Upload</label>
             <input
@@ -929,87 +1246,6 @@ export default function App() {
           </button>
           <button className="btn secondary" onClick={stop} disabled={!running}>
             Stop
-          </button>
-
-          <div className="panel-divider" />
-          <h2>Fail logs</h2>
-          <p className="field-hint">
-            Client selects log folders on their own PC. Fail counts are computed
-            locally in the browser (files are not uploaded). Run simulation
-            first, then Analyze.
-          </p>
-          <input
-            id="logs-folder"
-            ref={logInputRef}
-            type="file"
-            multiple
-            className="sr-only-file"
-            onChange={(e) => {
-              addLogFolder(e.target.files);
-              e.target.value = "";
-            }}
-            {...{ webkitdirectory: "true", directory: "true" }}
-          />
-          <input
-            id="logs-files"
-            ref={logFilesInputRef}
-            type="file"
-            multiple
-            accept=".log,.txt,.csv,.out,.rpt,.sum,.dat,text/*"
-            className="sr-only-file"
-            onChange={(e) => {
-              addLogFolder(e.target.files);
-              e.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={() => logInputRef.current?.click()}
-          >
-            Add log folder
-          </button>
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={() => logFilesInputRef.current?.click()}
-          >
-            Add log files
-          </button>
-          {logFolders.length > 0 ? (
-            <div className="log-folder-list">
-              {logFolders.map((name) => (
-                <div key={name} className="file-name">
-                  {name}
-                </div>
-              ))}
-              <div className="chooser-meta">
-                {logFolders.length} folder(s) · {logFiles.length} file(s)
-              </div>
-            </div>
-          ) : (
-            <div className="field-hint">No logs added yet</div>
-          )}
-          {!done && (
-            <div className="field-hint warn">
-              Run simulation first, then Analyze
-            </div>
-          )}
-          <button
-            type="button"
-            className="btn"
-            onClick={analyzeFails}
-            disabled={!done || !logFiles.length || analyzingFails}
-          >
-            {analyzingFails ? "Analyzing…" : "Analyze fail counts"}
-          </button>
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={clearLogs}
-            disabled={!logFiles.length && !failAnalysis}
-          >
-            Clear logs
           </button>
         </aside>
 
@@ -1144,35 +1380,43 @@ export default function App() {
 
           <div className="chart-wrap">
             <div className="chart-title">
-              Live vector memory (MB) — red = without verilumen agent, green =
+              Live vector memory (MB) — blue = without verilumen agent, green =
               with verilumen agent
             </div>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={loadSeries} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                 <defs>
                   <linearGradient id="gFull" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#e25b4c" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#e25b4c" stopOpacity={0.02} />
+                    <stop offset="0%" stopColor={chartColors.full} stopOpacity={0.45} />
+                    <stop offset="100%" stopColor={chartColors.full} stopOpacity={0.02} />
                   </linearGradient>
                   <linearGradient id="gLstm" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3ecf8e" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#3ecf8e" stopOpacity={0.02} />
+                    <stop offset="0%" stopColor={chartColors.lstm} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={chartColors.lstm} stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#2a3340" strokeDasharray="3 3" />
-                <XAxis dataKey="step" stroke="#8b98a8" tick={{ fill: "#8b98a8", fontSize: 11 }} />
-                <YAxis yAxisId="ram" stroke="#8b98a8" tick={{ fill: "#8b98a8", fontSize: 11 }} />
+                <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="step"
+                  stroke={chartColors.tick}
+                  tick={{ fill: chartColors.tick, fontSize: 11 }}
+                />
+                <YAxis
+                  yAxisId="ram"
+                  stroke={chartColors.tick}
+                  tick={{ fill: chartColors.tick, fontSize: 11 }}
+                />
                 <YAxis
                   yAxisId="rss"
                   orientation="right"
-                  stroke="#4ea1f3"
-                  tick={{ fill: "#4ea1f3", fontSize: 11 }}
+                  stroke={chartColors.rss}
+                  tick={{ fill: chartColors.rss, fontSize: 11 }}
                 />
                 <Tooltip
                   contentStyle={{
-                    background: "#161b22",
-                    border: "1px solid #2a3340",
-                    color: "#e8edf4",
+                    background: chartColors.tooltipBg,
+                    border: `1px solid ${chartColors.tooltipBorder}`,
+                    color: chartColors.tooltipText,
                   }}
                 />
                 <Legend />
@@ -1181,7 +1425,7 @@ export default function App() {
                   type="monotone"
                   dataKey="full_mb"
                   name="without verilumen agent"
-                  stroke="#e25b4c"
+                  stroke={chartColors.full}
                   fill="url(#gFull)"
                   strokeWidth={2.5}
                   isAnimationActive={false}
@@ -1191,7 +1435,7 @@ export default function App() {
                   type="monotone"
                   dataKey="lstm_mb"
                   name="with verilumen agent"
-                  stroke="#3ecf8e"
+                  stroke={chartColors.lstm}
                   fill="url(#gLstm)"
                   strokeWidth={2.5}
                   isAnimationActive={false}
@@ -1201,7 +1445,7 @@ export default function App() {
                   type="monotone"
                   dataKey="rss_mb"
                   name="Host RSS"
-                  stroke="#4ea1f3"
+                  stroke={chartColors.rss}
                   strokeWidth={1.5}
                   dot={false}
                   isAnimationActive={false}
@@ -1246,8 +1490,9 @@ export default function App() {
                 tone="keep"
                 ids={done.selected_ids}
                 emptyText="No kept patterns"
-                failById={failById}
-                sortByFails={Boolean(failAnalysis)}
+                detailsById={Object.fromEntries(
+                  (done.selected_details || []).map((d) => [d.pattern_id, d])
+                )}
               />
               <PatternListPanel
                 title="low risk patterns"
@@ -1264,9 +1509,125 @@ export default function App() {
                 )}
                 selectedId={discardFocusId}
                 onSelectId={setDiscardFocusId}
-                failById={failById}
-                sortByFails={Boolean(failAnalysis)}
               />
+            </div>
+          )}
+        </main>
+      </div>
+      )}
+
+      {processMode === "post" && (
+      <div className="layout">
+        <aside className="panel">
+          <div className="process-panel-tag post">Post-process</div>
+          <h2>Fail logs</h2>
+          <p className="field-hint">
+            After ATE: one log file = one die/chip. Analysis stays on this PC.
+            Add the log from chip N to recommend patterns for chip N+1.
+          </p>
+          <input
+            id="logs-folder"
+            ref={logInputRef}
+            type="file"
+            multiple
+            className="sr-only-file"
+            onChange={(e) => {
+              addLogFolder(e.target.files);
+              e.target.value = "";
+            }}
+            {...{ webkitdirectory: "true", directory: "true" }}
+          />
+          <input
+            id="logs-files"
+            ref={logFilesInputRef}
+            type="file"
+            multiple
+            accept=".log,.txt,.csv,.out,.rpt,.sum,.dat,text/*"
+            className="sr-only-file"
+            onChange={(e) => {
+              addLogFolder(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => logInputRef.current?.click()}
+          >
+            Add log folder
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => logFilesInputRef.current?.click()}
+          >
+            Add log files
+          </button>
+          {logFolders.length > 0 ? (
+            <div className="log-folder-list">
+              {logFolders.map((name) => (
+                <div key={name} className="file-name">
+                  {name}
+                </div>
+              ))}
+              <div className="chooser-meta">
+                {logFolders.length} folder(s) · {logFiles.length} file(s)
+              </div>
+            </div>
+          ) : (
+            <div className="field-hint">No logs added yet</div>
+          )}
+          {!done && (
+            <div className="field-hint warn">
+              Finish Pre-process (Run live simulation) first, then Analyze
+            </div>
+          )}
+          <button
+            type="button"
+            className="btn"
+            onClick={analyzeFails}
+            disabled={!done || !logFiles.length || analyzingFails}
+          >
+            {analyzingFails ? "Analyzing…" : "Analyze & recommend next chip"}
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={clearLogs}
+            disabled={!logFiles.length && !failAnalysis}
+          >
+            Clear logs
+          </button>
+        </aside>
+
+        <main>
+          <div className={`status ${statusTone || ""}`}>
+            {analyzingFails
+              ? status
+              : failAnalysis
+                ? status
+                : done
+                  ? `Post-process ready — ${done.total_n ?? "—"} patterns from pre-process (keep ${done.selected_n} · skip ${done.discarded_ids?.length ?? 0}). Add logs and Analyze.`
+                  : "Post-process — run Pre-process first so keep / skip pattern lists exist."}
+          </div>
+
+          {!failAnalysis && (
+            <div className="post-empty">
+              <h2>Next-chip pattern recommendation</h2>
+              <p>
+                Pre-process predicts from STIL before ATE. Post-process uses
+                real fail logs from tested chips, then recommends a reduced
+                ordered pattern list for the next chip.
+              </p>
+              <ol>
+                <li>Complete Pre-process (STIL → Run live simulation)</li>
+                <li>Add log folders (chips/dies) from your PC</li>
+                <li>Click Analyze &amp; recommend next chip</li>
+              </ol>
+              <p className="field-hint">
+                Log fail → run on next chip. Log pass-only → skip. ML only for
+                patterns missing from logs (similar to failers).
+              </p>
             </div>
           )}
 
@@ -1274,11 +1635,11 @@ export default function App() {
             <div className="fail-analysis">
               <div className="fail-summary">
                 <div className="metric">
-                  <div className="k">Log folders</div>
+                  <div className="k">Log folders (dies)</div>
                   <div className="v">{failAnalysis.n_folders}</div>
                 </div>
                 <div className="metric">
-                  <div className="k">Kept fails</div>
+                  <div className="k">high recommended patterns from pre-process</div>
                   <div className="v">
                     {failAnalysis.summary?.kept_total_fails ?? 0}
                     <span className="v-sub">
@@ -1289,7 +1650,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="metric">
-                  <div className="k">Discarded fails</div>
+                  <div className="k">low risk patterns from pre-process</div>
                   <div className="v">
                     {failAnalysis.summary?.discarded_total_fails ?? 0}
                     <span className="v-sub">
@@ -1306,26 +1667,16 @@ export default function App() {
               </div>
               <p className="field-hint" style={{ marginBottom: 12 }}>
                 Log labels are 1-based (P1…P1000); tables use Verilumen agent
-                ids (0…999). Fail = any channel STATUS:F on a die.
+                ids (0…999). Fail = any channel STATUS:F on a die. Channel hits
+                and die folders feed criticality ranking.
               </p>
-              <div className="lists-wrap">
-                <FailTable
-                  title="high recommended patterns fails"
-                  tone="keep"
-                  rows={failAnalysis.kept}
-                  emptyText="No fails among kept patterns in these logs"
-                />
-                <FailTable
-                  title="low risk patterns fail"
-                  tone="discard"
-                  rows={failAnalysis.discarded}
-                  emptyText="No fails among discarded patterns in these logs"
-                />
-              </div>
+
+              <NextChipRecommend nextChip={failAnalysis.next_chip} />
             </div>
           )}
         </main>
       </div>
+      )}
     </div>
   );
 }

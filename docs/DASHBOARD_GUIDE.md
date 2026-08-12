@@ -202,7 +202,7 @@ These patterns were valid but not loaded. The agent skipped them to save memory 
 
 ![Low risk patterns](images/10b-low-risk.png)
 
-Click any low-risk chip to read a short explanation for that specific pattern — which kept pattern it was closest to, and the distance score.
+Click any low-risk chip to read a short explanation for that specific pattern — which kept pattern it was closest to, and the **embedding distance**. The panel also shows a **full 234-bit comparison** like the first-ten picker: **yellow** cells mark positions where the kept and not-loaded patterns differ.
 
 ---
 
@@ -228,7 +228,7 @@ Each row shows the pattern id, number of fails, and number of passes. Rows are o
 The dashboard uses a simple color language:
 
 - **Green** usually means Verilumen agent results, kept patterns, or savings.  
-- **Red** usually means without verilumen agent, discarded patterns, or fail counts.  
+- **Blue** usually means without verilumen agent, low-risk / not-loaded patterns, or related counts.  
 - **Yellow / gold** is used for progress, highlights, and bit differences.
 
 ---

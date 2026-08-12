@@ -289,7 +289,10 @@ def build():
             "The green list (<b>high recommended patterns order</b>) shows patterns loaded into vector memory. "
             "The red list (<b>low risk patterns</b>) shows patterns skipped to save RAM/time "
             "(usually too similar to an already-kept pattern). "
-            "Click a low-risk chip to read why it was not loaded. After fail analysis, badges "
+            "Click a low-risk chip to read why it was not loaded and to see a "
+            "<b>full 234-bit comparison</b> against the closest kept pattern "
+            "(embedding + bit distance shown; yellow cells = differing 0/1 bits, "
+            "same style as the first-ten picker). After fail analysis, badges "
             "like <b>8F</b> mean that pattern had 8 fails in your logs.",
             styles["body"],
         )
@@ -358,7 +361,7 @@ def build():
     story.append(Paragraph("Reading the colors & practical notes", styles["h"]))
     story.append(
         Paragraph(
-            "<b>Green</b> = Verilumen / kept / savings. <b>Red</b> = full suite / discarded / fails. "
+            "<b>Green</b> = Verilumen / kept / savings. <b>Blue</b> = without agent / low-risk / not loaded. "
             "<b>Yellow</b> = progress and bit differences. Always run the simulation before analyzing "
             "logs. Expected log style uses pattern headers such as P12 and STATUS:F / STATUS:P. "
             "Log labels P1…P1000 map to dashboard ids 0…999 automatically. "
