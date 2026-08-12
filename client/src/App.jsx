@@ -1625,8 +1625,7 @@ export default function App() {
                 <li>Click Analyze &amp; recommend next chip</li>
               </ol>
               <p className="field-hint">
-                Log fail → run on next chip. Log pass-only → skip. ML only for
-                patterns missing from logs (similar to failers).
+                Log fail → run on next chip. Log pass-only → skip.
               </p>
             </div>
           )}
