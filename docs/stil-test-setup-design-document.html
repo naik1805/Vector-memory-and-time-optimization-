@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STIL Test-Setup Sequence Optimizer & Analyzer — System Design Document</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0e17;
+      --bg-surface: #0f1624;
+      --bg-card: #151f32;
+      --bg-card-hover: #1b2842;
+      --border: #223049;
+      --border-accent: #334b73;
+      
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --blue: #38bdf8;
+      --purple: #a855f7;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --cyan: #06b6d4;
+
+      --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-display: 'Space Grotesk', system-ui, sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 14.5px; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Header */
+    header.header {
+      background: rgba(15, 22, 36, 0.95);
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+    .badge-icon {
+      background: linear-gradient(135deg, var(--blue), var(--green));
+      color: #000;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      letter-spacing: 0.05em;
+    }
+    .brand h1 {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .brand-sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-left: 0.5rem;
+      padding-left: 0.75rem;
+      border-left: 1px solid var(--border);
+    }
+    .btn-print {
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      color: var(--text);
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+    .btn-print:hover {
+      background: var(--border);
+      color: var(--blue);
+      border-color: var(--blue);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 2.25rem 2rem 5rem;
+    }
+
+    /* Hero / Overview */
+    .hero-summary {
+      background: linear-gradient(180deg, var(--bg-surface) 0%, rgba(15, 22, 36, 0.5) 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.25rem;
+      margin-bottom: 2.5rem;
+    }
+    .hero-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--blue);
+      margin-bottom: 0.6rem;
+      font-weight: 600;
+    }
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: 2.1rem;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 0.85rem;
+      background: linear-gradient(135deg, #fff 40%, var(--blue) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc {
+      font-size: 1.02rem;
+      color: var(--text-muted);
+      max-width: 1000px;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+
+    .core-pipeline-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+    }
+    .pipe-step {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .pipe-step.b { color: var(--blue); font-weight: 600; }
+    .pipe-step.p { color: var(--purple); font-weight: 600; }
+    .pipe-step.g { color: var(--green); font-weight: 600; }
+    .pipe-step.a { color: var(--amber); font-weight: 600; }
+    .pipe-arrow { color: var(--text-dim); }
+
+    /* Section Header */
+    .section-title-wrap {
+      margin: 2.5rem 0 1.25rem;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+    .sec-title {
+      font-family: var(--font-display);
+      font-size: 1.45rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .sec-badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Master Block Diagram Canvas */
+    .diagram-container {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem 1.5rem 1.5rem;
+      margin: 1.5rem 0 2.5rem;
+      overflow-x: auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .diagram-svg {
+      width: 100%;
+      min-width: 1180px;
+      height: auto;
+      display: block;
+    }
+
+    /* Explanation Grid (4 Stages) */
+    .stages-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+      margin: 2rem 0;
+    }
+    @media (max-width: 1100px) {
+      .stages-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 650px) {
+      .stages-grid { grid-template-columns: 1fr; }
+    }
+
+    .stage-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .stage-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+    }
+    .stage-card.s1::before { background: var(--blue); }
+    .stage-card.s2::before { background: var(--cyan); }
+    .stage-card.s3::before { background: var(--purple); }
+    .stage-card.s4::before { background: var(--green); }
+
+    .stage-num {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.4rem;
+    }
+    .stage-card.s1 .stage-num { color: var(--blue); }
+    .stage-card.s2 .stage-num { color: var(--cyan); }
+    .stage-card.s3 .stage-num { color: var(--purple); }
+    .stage-card.s4 .stage-num { color: var(--green); }
+
+    .stage-title {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    .stage-list {
+      list-style: none;
+      font-size: 0.86rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .stage-list li {
+      margin-bottom: 0.65rem;
+      padding-left: 1.15rem;
+      position: relative;
+    }
+    .stage-list li::before {
+      content: '▸';
+      position: absolute;
+      left: 0;
+      color: var(--text-dim);
+    }
+    .stage-list strong {
+      color: var(--text);
+    }
+
+    /* Decision Engine Cards */
+    .decision-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin: 1.75rem 0;
+    }
+    @media (max-width: 850px) {
+      .decision-grid { grid-template-columns: 1fr; }
+    }
+
+    .decision-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+    }
+    .decision-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .decision-card p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.65;
+      margin-bottom: 1rem;
+    }
+
+    .rule-tag {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      margin: 0.25rem 0.25rem 0.25rem 0;
+      display: inline-block;
+    }
+    .rule-tag.keep { background: rgba(16, 185, 129, 0.15); color: var(--green); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .rule-tag.cut { background: rgba(244, 63, 94, 0.15); color: var(--rose); border: 1px solid rgba(244, 63, 94, 0.3); }
+    .rule-tag.defer { background: rgba(245, 158, 11, 0.15); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+    /* Interactive Live Tester Simulator */
+    .simulator-wrap {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      margin: 2rem 0;
+    }
+    .sim-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+    .sim-title {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+    .sim-hint {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .clock-row {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 1rem;
+      margin-bottom: 1rem;
+    }
+    .clock-slot {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 0.6rem;
+      min-width: 96px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .clock-slot:hover {
+      transform: translateY(-2px);
+      border-color: var(--blue);
+    }
+    .clock-slot.active {
+      border-color: var(--blue);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+    }
+    .clock-id {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 0.25rem;
+    }
+    .clock-pin-sig {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .clock-badge {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+    }
+    .clock-badge.cut { background: rgba(244, 63, 94, 0.2); color: var(--rose); border: 1px solid var(--rose); }
+    .clock-badge.keep { background: rgba(16, 185, 129, 0.2); color: var(--green); border: 1px solid var(--green); }
+    .clock-badge.defer { background: rgba(245, 158, 11, 0.2); color: var(--amber); border: 1px solid var(--amber); }
+
+    .sim-details {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+    }
+    .sim-details-info h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--blue);
+      margin-bottom: 0.35rem;
+    }
+    .sim-details-info p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .sim-stats-pill {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    /* Print styling */
+    @media print {
+      body { background: #fff !important; color: #000 !important; }
+      header.header, .btn-print { display: none !important; }
+      .container { padding: 0 !important; max-width: 100% !important; }
+      .hero-summary, .diagram-container, .stage-card, .decision-card, .simulator-wrap {
+        border: 1px solid #ccc !important;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="header">
+    <div class="brand">
+      <div class="badge-icon">STIL OPT</div>
+      <h1>STIL Test-Setup Sequence Optimizer & Analyzer</h1>
+      <span class="brand-sub">IEEE 1149.1 / 1687 &bull; Learning-to-Defer (LtD)</span>
+    </div>
+    <button class="btn-print" onclick="window.print()">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+      </svg>
+      <span>Print / Export PDF</span>
+    </button>
+  </header>
+
+  <div class="container">
+
+    <!-- Hero / Summary -->
+    <div class="hero-summary">
+      <div class="hero-tag">Core System Architecture & Basic Mechanism</div>
+      <h2 class="hero-title">How the Test-Setup Optimizer Works</h2>
+      <p class="hero-desc">
+        When a user uploads a STIL file, the agent isolates the <strong>TEST_SETUP</strong> initialization sequence from the scan pattern payload. 
+        It expands tester clock loops, parses 6 JTAG/IJTAG pin states, and uses a combination of 
+        <strong>deterministic IEEE rules</strong> and a <strong>Learning-to-Defer (LtD) gradient-boosted model</strong> 
+        to classify every individual clock cycle as <strong>Keep Clock</strong>, <strong>Redundant (Cut)</strong>, or <strong>Defer to Human</strong>.
+        The scan payload is passed through completely untouched, guaranteeing 100% zero-distortion and zero fault-coverage loss.
+      </p>
+
+      <!-- Linear Flow Strip -->
+      <div class="core-pipeline-strip">
+        <div class="pipe-step b">1. User Uploads STIL</div>
+        <div class="pipe-arrow">──▶</div>
+        <div class="pipe-step b">2. Isolate TEST_SETUP</div>
+        <div class="pipe-arrow">──▶</div>
+        <div class="pipe-step p">3. Expand Clocks & Pins</div>
+        <div class="pipe-arrow">──▶</div>
+        <div class="pipe-step p">4. IEEE Rules + LtD Model</div>
+        <div class="pipe-arrow">──▶</div>
+        <div class="pipe-step g">5. Keep Clock vs Redundant</div>
+        <div class="pipe-arrow">──▶</div>
+        <div class="pipe-step a">6. Emit Optimized *_opt.stil</div>
+      </div>
+    </div>
+
+    <!-- Master Architecture Block Diagram -->
+    <div class="section-title-wrap">
+      <div class="sec-title">
+        <span style="color:var(--blue)">●</span>
+        <span>Mechanism Block Diagram</span>
+      </div>
+      <span class="sec-badge">4-Stage Pipeline with Untouched Payload Highway</span>
+    </div>
+
+    <div class="diagram-container">
+      <svg class="diagram-svg" viewBox="0 0 1160 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.03"/>
+          </linearGradient>
+          <linearGradient id="g-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.03"/>
+          </linearGradient>
+          <linearGradient id="g-purple" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#a855f7" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="#a855f7" stop-opacity="0.03"/>
+          </linearGradient>
+          <linearGradient id="g-green" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#10b981" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.03"/>
+          </linearGradient>
+          <linearGradient id="g-amber" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.03"/>
+          </linearGradient>
+
+          <marker id="m-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#475569"/>
+          </marker>
+          <marker id="m-cyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#06b6d4"/>
+          </marker>
+          <marker id="m-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#a855f7"/>
+          </marker>
+          <marker id="m-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981"/>
+          </marker>
+          <marker id="m-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="#f59e0b"/>
+          </marker>
+        </defs>
+
+        <!-- STAGE COLUMNS BACKGROUND -->
+        <!-- Stage 1 -->
+        <rect x="20" y="20" width="220" height="430" rx="12" fill="#0f1624" stroke="#223049" stroke-width="1"/>
+        <text x="35" y="48" fill="#64748b" font-family="'Space Grotesk', sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">STAGE 1: INGESTION</text>
+
+        <!-- Stage 2 -->
+        <rect x="260" y="20" width="250" height="430" rx="12" fill="#0f1624" stroke="#223049" stroke-width="1"/>
+        <text x="275" y="48" fill="#64748b" font-family="'Space Grotesk', sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">STAGE 2: DISSECTION & EXPANSION</text>
+
+        <!-- Stage 3 -->
+        <rect x="530" y="20" width="280" height="430" rx="12" fill="#0f1624" stroke="#223049" stroke-width="1"/>
+        <text x="545" y="48" fill="#64748b" font-family="'Space Grotesk', sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">STAGE 3: INTELLIGENCE & SAFETY</text>
+
+        <!-- Stage 4 -->
+        <rect x="830" y="20" width="310" height="430" rx="12" fill="#0f1624" stroke="#223049" stroke-width="1"/>
+        <text x="845" y="48" fill="#64748b" font-family="'Space Grotesk', sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">STAGE 4: REWRITE & EMISSION</text>
+
+        <!-- STAGE 1 NODES -->
+        <!-- 1. STIL Pool -->
+        <rect x="35" y="70" width="190" height="95" rx="8" fill="url(#g-blue)" stroke="#38bdf8" stroke-width="1.5"/>
+        <circle cx="205" cy="85" r="4" fill="#38bdf8"/>
+        <text x="50" y="95" fill="#38bdf8" font-family="'Fira Code', monospace" font-size="10" font-weight="600">IEEE 1450 STIL POOL</text>
+        <text x="50" y="118" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">STUCK-AT ATPG</text>
+        <text x="50" y="133" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5">SCAN-SHIFT VECTORS</text>
+        <text x="50" y="148" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5">MEMORY BIST (MBIST)</text>
+
+        <!-- Down Arrow -->
+        <path d="M 130 165 L 130 195" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#m-arrow)"/>
+
+        <!-- 2. Boundary Isolator -->
+        <rect x="35" y="195" width="190" height="85" rx="8" fill="url(#g-blue)" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="50" y="220" fill="#38bdf8" font-family="'Fira Code', monospace" font-size="10" font-weight="600">BOUNDARY ISOLATOR</text>
+        <text x="50" y="240" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">Pattern ... Payload Guard</text>
+        <text x="50" y="258" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">Separates TEST_SETUP</text>
+        <text x="50" y="272" fill="#34d399" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">Locks Pattern Payload</text>
+
+        <!-- 3. Telemetry -->
+        <rect x="35" y="325" width="190" height="65" rx="8" fill="url(#g-amber)" stroke="#f59e0b" stroke-width="1"/>
+        <text x="50" y="348" fill="#f59e0b" font-family="'Fira Code', monospace" font-size="9.5" font-weight="600">HwRecorder / Telemetry</text>
+        <text x="50" y="365" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="10">RAM & GPU Utilization</text>
+        <text x="50" y="380" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="9">CUDA VRAM Peak Snapshot</text>
+
+        <!-- Path from Isolator to Expander -->
+        <path d="M 225 237 L 275 117" stroke="#06b6d4" stroke-width="2" marker-end="url(#m-cyan)"/>
+
+        <!-- STAGE 2 NODES -->
+        <!-- 4. Clock Expander -->
+        <rect x="275" y="70" width="220" height="85" rx="8" fill="url(#g-cyan)" stroke="#06b6d4" stroke-width="1.5"/>
+        <text x="290" y="95" fill="#06b6d4" font-family="'Fira Code', monospace" font-size="10" font-weight="600">TESTER CLOCK EXPANDER</text>
+        <text x="290" y="115" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">Loop N { V } ──▶ N Clocks</text>
+        <text x="290" y="132" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">Resolves "Loop 5" ──▶ 5 Cycles</text>
+        <text x="290" y="146" fill="#64748b" font-family="'Plus Jakarta Sans', sans-serif" font-size="9">Annotation Phase Carry-Forward</text>
+
+        <!-- Down to Pin Matrix -->
+        <path d="M 385 155 L 385 185" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#m-cyan)"/>
+
+        <!-- 5. 6-Pin Tensor Matrix -->
+        <rect x="275" y="185" width="220" height="95" rx="8" fill="url(#g-cyan)" stroke="#06b6d4" stroke-width="1.5"/>
+        <text x="290" y="208" fill="#06b6d4" font-family="'Fira Code', monospace" font-size="10" font-weight="600">6-PIN TENSOR MATRIX</text>
+        <text x="290" y="228" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">Shape: [N_clocks × 6 Pins]</text>
+        <text x="290" y="246" fill="#94a3b8" font-family="'Fira Code', monospace" font-size="9.5">Pins: TCK, TMS, TDI, TDO, TRST, RST</text>
+        <text x="290" y="260" fill="#64748b" font-family="'Fira Code', monospace" font-size="9">Binary Level 1/0 Mapping (PyTorch/NumPy)</text>
+
+        <!-- Down to Commonality -->
+        <path d="M 385 280 L 385 310" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#m-cyan)"/>
+
+        <!-- 6. Genuine Commonality -->
+        <rect x="275" y="310" width="220" height="95" rx="8" fill="url(#g-cyan)" stroke="#06b6d4" stroke-width="1"/>
+        <text x="290" y="333" fill="#06b6d4" font-family="'Fira Code', monospace" font-size="10" font-weight="600">GENUINE COMMONALITY</text>
+        <text x="290" y="353" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5" font-weight="700">3-Tier Verification Matrix</text>
+        <text x="290" y="371" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="9">1. Headline Match (All Files Agree)</text>
+        <text x="290" y="385" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="9">2. Per-Step Score (IR, SIB, TDR)</text>
+        <text x="290" y="399" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="9">3. Per-Clock Consensus Ratio</text>
+
+        <!-- Connections from Stage 2 to Stage 3 -->
+        <path d="M 495 220 L 545 130" stroke="#a855f7" stroke-width="2" marker-end="url(#m-purple)"/>
+        <path d="M 495 240 L 545 230" stroke="#a855f7" stroke-width="2" marker-end="url(#m-purple)"/>
+
+        <!-- STAGE 3 NODES -->
+        <!-- 7. Deterministic Rule Engine -->
+        <rect x="545" y="70" width="250" height="115" rx="8" fill="url(#g-purple)" stroke="#a855f7" stroke-width="1.5"/>
+        <text x="560" y="93" fill="#a855f7" font-family="'Fira Code', monospace" font-size="10" font-weight="600">DETERMINISTIC RULE ENGINE</text>
+        <text x="560" y="113" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">IEEE 1149.1 / 1687 Invariants</text>
+        <text x="560" y="131" fill="#f43f5e" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Duplicate RESET / TRST Hold</text>
+        <text x="560" y="145" fill="#f43f5e" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Redundant 2nd TAP Reset (5x TMS)</text>
+        <text x="560" y="159" fill="#f59e0b" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Post-Reset / Post-IJTAG Idle Holds</text>
+        <text x="560" y="173" fill="#10b981" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• IMMUTABLE: IR, SIB, TDR, Exit-DR</text>
+
+        <!-- Down to Feature Vector -->
+        <path d="M 670 185 L 670 205" stroke="#a855f7" stroke-width="1.5" marker-end="url(#m-purple)"/>
+
+        <!-- 8. Feature Vector -->
+        <rect x="545" y="205" width="250" height="65" rx="8" fill="url(#g-purple)" stroke="#a855f7" stroke-width="1.5"/>
+        <text x="560" y="228" fill="#a855f7" font-family="'Fira Code', monospace" font-size="10" font-weight="600">13-DIMENSIONAL FEATURE VECTOR</text>
+        <text x="560" y="246" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="10.5">x_i ∈ R^13 per tester cycle</text>
+        <text x="560" y="260" fill="#94a3b8" font-family="'Plus Jakarta Sans', sans-serif" font-size="9">dup, tap_rst, tck0, tms1, is_sib, etc.</text>
+
+        <!-- Down to Learning to Defer -->
+        <path d="M 670 270 L 670 295" stroke="#a855f7" stroke-width="1.5" marker-end="url(#m-purple)"/>
+
+        <!-- 9. Learning-to-Defer GBC -->
+        <rect x="545" y="295" width="250" height="120" rx="8" fill="url(#g-purple)" stroke="#a855f7" stroke-width="2"/>
+        <text x="560" y="320" fill="#a855f7" font-family="'Fira Code', monospace" font-size="10" font-weight="700">LEARNING-TO-DEFER (LtD) GBC</text>
+        <text x="560" y="340" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">CUDA / CPU Gradient Booster</text>
+        <text x="560" y="358" fill="#cbd5e1" font-family="'Fira Code', monospace" font-size="9.5">80 Trees • Depth 3 • lr=0.08</text>
+        <text x="560" y="376" fill="#f43f5e" font-family="'Fira Code', monospace" font-size="9.5">P_cut > 0.65 ──▶ RECOMMEND CUT</text>
+        <text x="560" y="392" fill="#f59e0b" font-family="'Fira Code', monospace" font-size="9.5">0.35 ≤ P ≤ 0.65 ──▶ DEFER (Human)</text>
+        <text x="560" y="408" fill="#10b981" font-family="'Fira Code', monospace" font-size="9.5">P_cut < 0.35 ──▶ RECOMMEND KEEP</text>
+
+        <!-- Arrows from LtD to Stage 4 -->
+        <path d="M 795 330 L 845 130" stroke="#f59e0b" stroke-width="2" marker-end="url(#m-amber)"/>
+        <path d="M 795 365 L 845 230" stroke="#10b981" stroke-width="2" marker-end="url(#m-green)"/>
+
+        <!-- STAGE 4 NODES -->
+        <!-- 10. Human Review Store -->
+        <rect x="845" y="70" width="280" height="100" rx="8" fill="url(#g-amber)" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="860" y="95" fill="#f59e0b" font-family="'Fira Code', monospace" font-size="10" font-weight="600">HUMAN REVIEW STORE</text>
+        <text x="860" y="117" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">Active Engineer Approval</text>
+        <text x="860" y="135" fill="#cbd5e1" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Approved Cut Registry</text>
+        <text x="860" y="149" fill="#cbd5e1" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Persistent JSONL Training Log</text>
+        <text x="860" y="163" fill="#f59e0b" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• 6x Sample Weighting on Human Decisions</text>
+
+        <!-- Retrain Feedback Loop (dashed amber) -->
+        <path d="M 845 140 C 810 140 810 305 795 310" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#m-amber)"/>
+        <text x="805" y="240" fill="#f59e0b" font-family="'Fira Code', monospace" font-size="8.5" font-weight="700" transform="rotate(-90 805 240)">RETRAIN LOOP (6x weight)</text>
+
+        <!-- 11. AST Preserving Rewriter -->
+        <rect x="845" y="195" width="280" height="95" rx="8" fill="url(#g-green)" stroke="#10b981" stroke-width="1.5"/>
+        <text x="860" y="220" fill="#10b981" font-family="'Fira Code', monospace" font-size="10" font-weight="600">AST PRESERVING REWRITER</text>
+        <text x="860" y="240" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">Pattern-Block Reconstructor</text>
+        <text x="860" y="258" fill="#cbd5e1" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Emits Optimized TEST_SETUP</text>
+        <text x="860" y="272" fill="#cbd5e1" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Renumbers Cycle Annotations</text>
+        <text x="860" y="286" fill="#10b981" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• 100% Unmodified Scan Payload</text>
+
+        <!-- Down to Output Artifacts -->
+        <path d="M 985 290 L 985 320" stroke="#10b981" stroke-width="1.5" marker-end="url(#m-green)"/>
+
+        <!-- 12. Output Artifacts -->
+        <rect x="845" y="320" width="280" height="85" rx="8" fill="url(#g-green)" stroke="#10b981" stroke-width="1"/>
+        <text x="860" y="345" fill="#10b981" font-family="'Fira Code', monospace" font-size="10" font-weight="600">OUTPUT ARTIFACTS</text>
+        <text x="860" y="365" fill="#e2e8f0" font-family="'Plus Jakarta Sans', sans-serif" font-size="11" font-weight="700">Optimized STIL ZIP Bundle</text>
+        <text x="860" y="383" fill="#cbd5e1" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• *_opt.stil Generation</text>
+        <text x="860" y="397" fill="#cbd5e1" font-family="'Plus Jakarta Sans', sans-serif" font-size="9.5">• Audit HTML Verification Report</text>
+
+        <!-- UNTOUCHED PAYLOAD BYPASS HIGHWAY (GREEN DASHED) -->
+        <path d="M 130 280 L 130 480 L 985 480 L 985 405" stroke="#10b981" stroke-width="2.5" stroke-dasharray="6 6" marker-end="url(#m-green)"/>
+        <rect x="420" y="468" width="410" height="24" rx="4" fill="#090d16" stroke="#10b981"/>
+        <text x="625" y="484" fill="#10b981" font-family="'Space Grotesk', sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+          UNTOUCHED PAYLOAD BYPASS HIGHWAY (Zero Distortion Guaranteed)
+        </text>
+      </svg>
+    </div>
+
+    <!-- Explanations of the 4 Stages -->
+    <div class="stages-grid">
+      <!-- Stage 1 -->
+      <div class="stage-card s1">
+        <div class="stage-num">Stage 1</div>
+        <h3 class="stage-title">Ingestion & Isolation</h3>
+        <ul class="stage-list">
+          <li><strong>User uploads STIL file:</strong> Supports ATPG stuck-at, scan-shift, and MBIST suites.</li>
+          <li><strong>Boundary Isolator:</strong> Distinguishes initialization instructions (<code style="color:var(--blue)">TEST_SETUP</code>) from heavy pattern shift data.</li>
+          <li><strong>Zero Payload Distortion:</strong> The scan pattern vectors are locked and bypassed completely.</li>
+        </ul>
+      </div>
+
+      <!-- Stage 2 -->
+      <div class="stage-card s2">
+        <div class="stage-num">Stage 2</div>
+        <h3 class="stage-title">Dissection & Expansion</h3>
+        <ul class="stage-list">
+          <li><strong>Loop Expander:</strong> Converts STIL compressed loops (<code style="color:var(--cyan)">Loop 5 { V }</code>) into 5 explicit clock vectors.</li>
+          <li><strong>6-Pin Matrix:</strong> Extracts exact binary stimulus for JTAG/IJTAG pins: <strong>TCK, TMS, TDI, TDO, TRST, RST</strong>.</li>
+          <li><strong>Commonality Check:</strong> Identifies headline matches and step consistency across multiple pattern runs.</li>
+        </ul>
+      </div>
+
+      <!-- Stage 3 -->
+      <div class="stage-card s3">
+        <div class="stage-num">Stage 3</div>
+        <h3 class="stage-title">Rules & Learning-to-Defer</h3>
+        <ul class="stage-list">
+          <li><strong>IEEE Deterministic Rules:</strong> Checks JTAG 1149.1 & 1687 standards (duplicate TAP resets, redundant TRST holds, idle holds).</li>
+          <li><strong>13-D Feature Vector:</strong> Compiles pin transitions, TAP state history, and rule hints into a cycle tensor.</li>
+          <li><strong>LtD Gradient Booster:</strong> 
+            Recommends <strong>Cut</strong> (P > 0.65), <strong>Keep</strong> (P < 0.35), or <strong>Defers</strong> ambiguous cycles (0.35–0.65) to the engineer.
+          </li>
+        </ul>
+      </div>
+
+      <!-- Stage 4 -->
+      <div class="stage-card s4">
+        <div class="stage-num">Stage 4</div>
+        <h3 class="stage-title">Rewrite & Emission</h3>
+        <ul class="stage-list">
+          <li><strong>Human Review Store:</strong> Engineers confirm or override deferred recommendations; logged with 6x retrain weight.</li>
+          <li><strong>AST Preserving Rewriter:</strong> Reconstructs STIL test setup without breaking timing annotations or syntax.</li>
+          <li><strong>Output:</strong> Produces clean <code style="color:var(--green)">*_opt.stil</code> bundle with eliminated clock waste.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- The Dual Decision Engine: IEEE Rules vs Learning-to-Defer -->
+    <div class="section-title-wrap">
+      <div class="sec-title">
+        <span style="color:var(--purple)">●</span>
+        <span>Decision Engine: IEEE Invariants vs. Machine Learning</span>
+      </div>
+      <span class="sec-badge">Safety Guaranteed</span>
+    </div>
+
+    <div class="decision-grid">
+      <div class="decision-card">
+        <h3>
+          <span style="color:var(--purple)">1.</span>
+          Deterministic IEEE 1149.1 / 1687 Rule Engine
+        </h3>
+        <p>
+          Before any machine learning prediction is accepted, the rule engine checks safety-critical JTAG & IJTAG invariants. 
+          Hard mathematical rules prevent any clock from being cut if it impacts circuit initialization:
+        </p>
+        <div style="margin-top:0.5rem;">
+          <span class="rule-tag cut">Cut: Redundant 2nd TAP Reset (5x TMS=1)</span>
+          <span class="rule-tag cut">Cut: Duplicate TRST / Pin Reset Holds</span>
+          <span class="rule-tag cut">Cut: Post-Reset / Post-IJTAG Idle Holds</span>
+          <span class="rule-tag keep">IMMUTABLE: IR Scan Transitions (Shift-IR)</span>
+          <span class="rule-tag keep">IMMUTABLE: SIB (Segment Insertion Bit) Gates</span>
+          <span class="rule-tag keep">IMMUTABLE: TDR Data Capture & Exit-DR</span>
+        </div>
+      </div>
+
+      <div class="decision-card">
+        <h3>
+          <span style="color:var(--amber)">2.</span>
+          Learning-to-Defer (LtD) Gradient Booster
+        </h3>
+        <p>
+          Instead of making reckless binary decisions on borderline clocks, the model explicitly computes prediction confidence. 
+          If uncertainty exists, it <strong>defers to the test engineer</strong>:
+        </p>
+        <ul style="list-style:none; font-size:0.86rem; color:var(--text-muted); line-height:1.8;">
+          <li><strong style="color:var(--rose)">P_cut &gt; 0.65 &rarr; Recommend Redundant / Cut:</strong> High confidence clock waste (safe to remove).</li>
+          <li><strong style="color:var(--amber)">0.35 &le; P_cut &le; 0.65 &rarr; DEFER (Human Review):</strong> Flagged in UI for one-click engineer approval.</li>
+          <li><strong style="color:var(--green)">P_cut &lt; 0.35 &rarr; Recommend Keep Clock:</strong> Essential setup clock (protected).</li>
+          <li><strong style="color:var(--blue)">Retrain Loop:</strong> Engineer choices are given <strong>6x sample weight</strong> in next retraining iteration.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Interactive Live Test-Setup Analyzer Simulator -->
+    <div class="simulator-wrap">
+      <div class="sim-header">
+        <div>
+          <div class="sim-title">Interactive TEST_SETUP Clock Inspection</div>
+          <div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">
+            Click on any cycle below to see how the IEEE rules and Learning-to-Defer model categorize each clock:
+          </div>
+        </div>
+        <div class="sim-hint">Sample: 10-Clock Setup Block</div>
+      </div>
+
+      <div class="clock-row">
+        <div class="clock-slot" onclick="inspectClock(1, 'TMS=1, TCK=CLK', 'KEEP', '0.04', 'IEEE 1149.1 Standard TAP Reset (Cycle 1 of 5)', 'Initializes Test-Logic-Reset state.')">
+          <div class="clock-id">Clock #1</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge keep">KEEP</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(2, 'TMS=1, TCK=CLK', 'KEEP', '0.06', 'IEEE 1149.1 Standard TAP Reset (Cycle 2 of 5)', 'Advances TAP controller.')">
+          <div class="clock-id">Clock #2</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge keep">KEEP</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(3, 'TMS=1, TCK=CLK', 'KEEP', '0.05', 'IEEE 1149.1 Standard TAP Reset (Cycle 3 of 5)', 'Advances TAP controller.')">
+          <div class="clock-id">Clock #3</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge keep">KEEP</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(4, 'TMS=1, TCK=CLK', 'KEEP', '0.07', 'IEEE 1149.1 Standard TAP Reset (Cycle 4 of 5)', 'Advances TAP controller.')">
+          <div class="clock-id">Clock #4</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge keep">KEEP</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(5, 'TMS=1, TCK=CLK', 'KEEP', '0.12', 'IEEE 1149.1 5th TMS=1 TAP Reset', 'Reaches Test-Logic-Reset unconditionally.')">
+          <div class="clock-id">Clock #5</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge keep">KEEP</span>
+        </div>
+        <div class="clock-slot active" onclick="inspectClock(6, 'TMS=1, TCK=CLK', 'CUT', '0.94', 'Redundant 6th TAP Reset Clock', 'TAP controller is already in Test-Logic-Reset state. Redundant hold clock.')">
+          <div class="clock-id">Clock #6</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge cut">CUT</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(7, 'TMS=1, TCK=CLK', 'CUT', '0.96', 'Redundant 7th TAP Reset Clock', 'Excessive reset hold generated by generic ATPG header.')">
+          <div class="clock-id">Clock #7</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge cut">CUT</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(8, 'TMS=0, TCK=CLK', 'KEEP', '0.02', 'TAP Transition: Run-Test/Idle', 'Required state transition towards Shift-DR.')">
+          <div class="clock-id">Clock #8</div>
+          <div class="clock-pin-sig">TMS: 0</div>
+          <span class="clock-badge keep">KEEP</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(9, 'TCK=0, TRST=1', 'DEFER', '0.51', 'Post-Reset Settling Hold (Ambiguous)', 'Potential PLL lock or pad stabilization cycle. Defer to test engineer.')">
+          <div class="clock-id">Clock #9</div>
+          <div class="clock-pin-sig">TRST: 1</div>
+          <span class="clock-badge defer">DEFER</span>
+        </div>
+        <div class="clock-slot" onclick="inspectClock(10, 'TMS=1, TDI=1', 'KEEP', '0.03', 'Select-DR-Scan IEEE Transition', 'Immutable instruction register preamble.')">
+          <div class="clock-id">Clock #10</div>
+          <div class="clock-pin-sig">TMS: 1</div>
+          <span class="clock-badge keep">KEEP</span>
+        </div>
+      </div>
+
+      <!-- Live Inspector Box -->
+      <div class="sim-details" id="sim-inspector">
+        <div class="sim-details-info">
+          <h4 id="sim-name">Clock #6: Redundant 6th TAP Reset Clock</h4>
+          <p id="sim-reason">
+            <strong>Rule Triggered:</strong> TAP controller already reached Test-Logic-Reset at cycle 5. Additional consecutive TMS=1 clocks are redundant and safe to eliminate without changing hardware state.
+          </p>
+        </div>
+        <div class="sim-stats-pill">
+          <div>Recommendation: <strong style="color:var(--rose);" id="sim-rec">REDUNDANT (CUT)</strong></div>
+          <div style="color:var(--text-dim); font-size:0.75rem; margin-top:2px;">LtD Cut Prob: <span id="sim-prob">0.94</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Box -->
+    <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:1.5rem; text-align:center;">
+      <h3 style="font-family:var(--font-display); font-size:1.15rem; margin-bottom:0.5rem;">
+        Summary: Clean, Safe, and Automated Clock Optimization
+      </h3>
+      <p style="color:var(--text-muted); font-size:0.9rem; max-width:850px; margin:0 auto;">
+        The user simply provides the <code style="color:var(--blue)">.stil</code> file. 
+        The system separates the <code style="color:var(--cyan)">TEST_SETUP</code> block, tests every single clock cycle against deterministic IEEE rules and the Learning-to-Defer model, 
+        flags wasteful clocks as <strong style="color:var(--rose)">Redundant</strong>, protects critical cycles as <strong style="color:var(--green)">Keep</strong>, 
+        defers edge cases to human approval, and reconstructs the final STIL file with an untouched scan payload.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <footer style="margin-top:3.5rem; text-align:center; color:var(--text-dim); font-size:0.8rem; border-top:1px solid var(--border); padding-top:1.5rem;">
+      <p>STIL Test-Setup Sequence Optimizer & Analyzer &bull; System Design Document</p>
+      <p style="font-family:var(--font-mono); font-size:0.72rem; margin-top:0.25rem;">IEEE 1450 &bull; IEEE 1149.1 &bull; IEEE 1687 &bull; Antigravity Engineering</p>
+    </footer>
+
+  </div>
+
+  <script>
+    function inspectClock(num, pins, rec, prob, name, desc) {
+      document.querySelectorAll('.clock-slot').forEach(el => el.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+
+      document.getElementById('sim-name').textContent = 'Clock #' + num + ': ' + name;
+      document.getElementById('sim-reason').innerHTML = '<strong>Pins:</strong> ' + pins + ' &bull; <strong>Analysis:</strong> ' + desc;
+      
+      const recElem = document.getElementById('sim-rec');
+      recElem.textContent = rec === 'CUT' ? 'REDUNDANT (CUT)' : (rec === 'KEEP' ? 'KEEP CLOCK' : 'DEFER (HUMAN)');
+      recElem.style.color = rec === 'CUT' ? 'var(--rose)' : (rec === 'KEEP' ? 'var(--green)' : 'var(--amber)');
+
+      document.getElementById('sim-prob').textContent = prob;
+    }
+  </script>
+</body>
+</html>

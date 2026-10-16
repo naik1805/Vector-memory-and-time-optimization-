@@ -11,10 +11,200 @@ import {
   YAxis,
 } from "recharts";
 import { recommendNextChipGreedyMl } from "./nextChipRecommend";
+import { computeCostSavings, formatUsd } from "./costSavings";
 
 const API = "";
 const FIRST_N = 10;
 const THEME_KEY = "verilumen-theme";
+const COST_RATE_KEY = "verilumen-ate-rate";
+const COST_VOLUME_KEY = "verilumen-dies-year";
+
+function readStoredNumber(key, fallback) {
+  try {
+    const v = Number(localStorage.getItem(key));
+    if (Number.isFinite(v) && v > 0) return v;
+  } catch {
+    /* ignore */
+  }
+  return fallback;
+}
+
+function CostSavingsPanel({ done, savedTestMs, ateRate, diesPerYear, onRateChange, onVolumeChange }) {
+  const cost = useMemo(
+    () =>
+      computeCostSavings({
+        fullMs: done?.full_ms,
+        agentMs: done?.lstm_ms,
+        ateRatePerHour: ateRate,
+        diesPerYear,
+        savedMb: done?.saved_mb,
+        savedPctRam: done?.saved_pct,
+      }),
+    [done, ateRate, diesPerYear]
+  );
+
+  return (
+    <div className="layout cost-layout">
+      <aside className="panel">
+        <div className="process-panel-tag cost">Cost prediction</div>
+        <h2>ATE cost inputs</h2>
+        <p className="field-hint">
+          Estimated savings = test time saved × ATE burden rate × volume.
+          Run Pre-process first so per-die times come from your STIL run.
+        </p>
+        <div className="field">
+          <label htmlFor="ate-rate">ATE burden rate ($/hour)</label>
+          <input
+            id="ate-rate"
+            type="number"
+            min="0"
+            step="1"
+            value={ateRate}
+            onChange={(e) => onRateChange(Number(e.target.value) || 0)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="dies-year">Dies per year</label>
+          <input
+            id="dies-year"
+            type="number"
+            min="0"
+            step="1000"
+            value={diesPerYear}
+            onChange={(e) => onVolumeChange(Number(e.target.value) || 0)}
+          />
+        </div>
+        <p className="field-hint">
+          Defaults are examples — replace with your fab / test engineering
+          standard rates.
+        </p>
+      </aside>
+
+      <main className="cost-main">
+        {!cost.hasRun ? (
+          <div className="post-empty cost-empty">
+            <h2>No run data yet</h2>
+            <p>
+              Complete <strong>Pre-process</strong> (upload STIL → Run live
+              simulation), then return here to see estimated cost savings from
+              reduced test time and vector memory.
+            </p>
+            <ol>
+              <li>Pre-process → upload STIL</li>
+              <li>Run live simulation</li>
+              <li>Cost savings → review estimates</li>
+            </ol>
+          </div>
+        ) : (
+          <>
+            <div className="cost-hero">
+              <div className="cost-hero-k">Estimated annual ATE savings</div>
+              <div className="cost-hero-v">{formatUsd(cost.annualSaved)}</div>
+              <div className="cost-hero-sub">
+                at {formatUsd(ateRate)}/hr · {diesPerYear.toLocaleString()} dies/yr
+              </div>
+            </div>
+
+            <div className="fail-summary cost-metrics">
+              <div className="metric">
+                <div className="k">Per die saved</div>
+                <div className="v">{formatUsd(cost.costSavedPerDie)}</div>
+              </div>
+              <div className="metric">
+                <div className="k">Test time cut</div>
+                <div className="v">
+                  {savedTestMs
+                    ? `${formatTestTime(savedTestMs.ms)} (${cost.timePct.toFixed(1)}%)`
+                    : "—"}
+                </div>
+              </div>
+              <div className="metric">
+                <div className="k">Vector RAM saved</div>
+                <div className="v">
+                  {cost.savedMb.toFixed(2)} MB
+                  <span className="v-sub"> ({cost.savedPctRam}%)</span>
+                </div>
+              </div>
+              <div className="metric">
+                <div className="k">Patterns kept</div>
+                <div className="v">
+                  {done.selected_n}/{done.total_n}
+                </div>
+              </div>
+            </div>
+
+            <div className="cost-compare">
+              <h2>Per-die tester cost (estimated)</h2>
+              <table className="fail-table cost-table">
+                <thead>
+                  <tr>
+                    <th>Scenario</th>
+                    <th>Test time</th>
+                    <th>Tester cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Without Verilumen agent</td>
+                    <td>{formatTestTime(done.full_ms)}</td>
+                    <td>{formatUsd(cost.costFullPerDie)}</td>
+                  </tr>
+                  <tr>
+                    <td>With Verilumen agent</td>
+                    <td>{formatTestTime(done.lstm_ms)}</td>
+                    <td>{formatUsd(cost.costAgentPerDie)}</td>
+                  </tr>
+                  <tr className="cost-row-saved">
+                    <td>Savings per die</td>
+                    <td>{formatTestTime(cost.savedMs)}</td>
+                    <td>
+                      <strong>{formatUsd(cost.costSavedPerDie)}</strong>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="cost-compare">
+              <h2>Annual volume (estimated)</h2>
+              <table className="fail-table cost-table">
+                <thead>
+                  <tr>
+                    <th>Scenario</th>
+                    <th>Annual tester cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Full suite every die</td>
+                    <td>{formatUsd(cost.annualFull)}</td>
+                  </tr>
+                  <tr>
+                    <td>With agent subset</td>
+                    <td>{formatUsd(cost.annualAgent)}</td>
+                  </tr>
+                  <tr className="cost-row-saved">
+                    <td>Estimated savings</td>
+                    <td>
+                      <strong>{formatUsd(cost.annualSaved)}</strong>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p className="field-hint cost-disclaimer">
+              Estimates assume constant ATE $/hour and that reduced pattern
+              count maps directly to reduced test time (as modeled in
+              Pre-process). Memory savings are shown for context; dollar impact
+              uses test time unless your site ties tester class to vector RAM.
+            </p>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
 
 function readStoredTheme() {
   try {
@@ -822,6 +1012,26 @@ export default function App() {
   const [analyzingFails, setAnalyzingFails] = useState(false);
   const logInputRef = useRef(null);
   const logFilesInputRef = useRef(null);
+  const [ateRate, setAteRate] = useState(() => readStoredNumber(COST_RATE_KEY, 200));
+  const [diesPerYear, setDiesPerYear] = useState(() =>
+    readStoredNumber(COST_VOLUME_KEY, 1_000_000)
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COST_RATE_KEY, String(ateRate));
+    } catch {
+      /* ignore */
+    }
+  }, [ateRate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COST_VOLUME_KEY, String(diesPerYear));
+    } catch {
+      /* ignore */
+    }
+  }, [diesPerYear]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -1167,7 +1377,7 @@ export default function App() {
     <div className="app">
       <header className="hero">
         <div className="hero-copy">
-          <h1>test time optimization — Verilumen simulation agent</h1>
+          <h1>Test Time and Vector Memory Optimization — Verilumen Simulation Agent</h1>
           <p>
             Pre-process: STIL → pattern prediction. Post-process: ATE logs →
             fail analysis. Click any filled Verilumen agent slot (or Prev/Next)
@@ -1198,26 +1408,37 @@ export default function App() {
         </div>
       </header>
 
-      <div className="process-switch" role="tablist" aria-label="Process stage">
+      <div className="process-switch-row">
+        <div className="process-switch" role="tablist" aria-label="Process stage">
+          <button
+            type="button"
+            role="tab"
+            className={processMode === "pre" ? "active" : ""}
+            aria-selected={processMode === "pre"}
+            onClick={() => setProcessMode("pre")}
+          >
+            <span className="process-k">Pre-process</span>
+            <span className="process-v">STIL → pattern prediction</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={processMode === "post" ? "active" : ""}
+            aria-selected={processMode === "post"}
+            onClick={() => setProcessMode("post")}
+          >
+            <span className="process-k">Post-process</span>
+            <span className="process-v">ATE logs → fail analysis</span>
+          </button>
+        </div>
         <button
           type="button"
-          role="tab"
-          className={processMode === "pre" ? "active" : ""}
-          aria-selected={processMode === "pre"}
-          onClick={() => setProcessMode("pre")}
+          className={`cost-savings-btn${processMode === "cost" ? " active" : ""}`}
+          aria-pressed={processMode === "cost"}
+          onClick={() => setProcessMode("cost")}
         >
-          <span className="process-k">Pre-process</span>
-          <span className="process-v">STIL → pattern prediction</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={processMode === "post" ? "active" : ""}
-          aria-selected={processMode === "post"}
-          onClick={() => setProcessMode("post")}
-        >
-          <span className="process-k">Post-process</span>
-          <span className="process-v">ATE logs → fail analysis</span>
+          <span className="process-k">Cost savings</span>
+          <span className="process-v">ATE time &amp; memory → $</span>
         </button>
       </div>
 
@@ -1675,6 +1896,17 @@ export default function App() {
           )}
         </main>
       </div>
+      )}
+
+      {processMode === "cost" && (
+        <CostSavingsPanel
+          done={done}
+          savedTestMs={savedTestMs}
+          ateRate={ateRate}
+          diesPerYear={diesPerYear}
+          onRateChange={setAteRate}
+          onVolumeChange={setDiesPerYear}
+        />
       )}
     </div>
   );
